@@ -1,0 +1,50 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "MockGasOracle",
+  "sourceName": "contracts/pmms/mocks/MockGasOracle.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "name": "gasPrice",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getGasPrice",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_gasPrice",
+          "type": "uint256"
+        }
+      ],
+      "name": "setGasPrice",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x6080806040523461001d57633b9aca0060005560c190816100238239f35b600080fdfe60808060405260043610156013575b600080fd5b600090813560e01c908163455259cb14606f57508063bf1fe4201460575763fe173b9703600e57346054578060031936011260545760209054604051908152f35b80fd5b50346054576020366003190112605457600435815580f35b90503460875781600319360112608757602091548152f35b5080fdfea2646970667358221220ea5923f83942f49ba2e7d1eb7db4f71864f5fcbfa2960009c6a61e830df57f9964736f6c63430008160033",
+  "deployedBytecode": "0x60808060405260043610156013575b600080fd5b600090813560e01c908163455259cb14606f57508063bf1fe4201460575763fe173b9703600e57346054578060031936011260545760209054604051908152f35b80fd5b50346054576020366003190112605457600435815580f35b90503460875781600319360112608757602091548152f35b5080fdfea2646970667358221220ea5923f83942f49ba2e7d1eb7db4f71864f5fcbfa2960009c6a61e830df57f9964736f6c63430008160033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

@@ -1,0 +1,63 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "MockQuoter",
+  "sourceName": "contracts/pmms/mocks/MockQuoter.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "name": "RATE",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "tokenIn",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "tokenOut",
+          "type": "address"
+        },
+        {
+          "internalType": "uint24",
+          "name": "fee",
+          "type": "uint24"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amountIn",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint160",
+          "name": "sqrtPriceLimitX96",
+          "type": "uint160"
+        }
+      ],
+      "name": "quoteExactInputSingle",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "amountOut",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x608080604052346100165761010d908161001c8239f35b600080fdfe60808060405260043610156013575b600080fd5b600090813560e01c908163664e97041460b7575063f7729d4303600e573460b45760a036600319011260b4576001600160a01b036004358181160360b0576024358181160360b05760443562ffffff81160360b057606435906084359081160360b057670de0b6b3a764000080820291808304821490151715609c576020925060405191048152f35b634e487b7160e01b83526011600452602483fd5b5080fd5b80fd5b90503460b0578160031936011260b05780670de0b6b3a764000060209252f3fea2646970667358221220fc3dec7c97d5786c0734f98f1368c4f83cb1d460bd62ab763b8a9c7165d30d5464736f6c63430008160033",
+  "deployedBytecode": "0x60808060405260043610156013575b600080fd5b600090813560e01c908163664e97041460b7575063f7729d4303600e573460b45760a036600319011260b4576001600160a01b036004358181160360b0576024358181160360b05760443562ffffff81160360b057606435906084359081160360b057670de0b6b3a764000080820291808304821490151715609c576020925060405191048152f35b634e487b7160e01b83526011600452602483fd5b5080fd5b80fd5b90503460b0578160031936011260b05780670de0b6b3a764000060209252f3fea2646970667358221220fc3dec7c97d5786c0734f98f1368c4f83cb1d460bd62ab763b8a9c7165d30d5464736f6c63430008160033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

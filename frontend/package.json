@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Profit Maximizer Modular System (PMMS) - Auto Strategy Execution UI",
   "private": true,
+  "homepage": "https://kmafutah.github.io/SmartContracts/",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +11,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist",    
+    "deploy": "gh-pages -d dist --branch=gh-pages --message='Deploy '\"$(date)\"", 
+    "deploy0": "gh-pages -d dist", 
     "build:abis": "bash scripts/build-abis.sh"
   },
   "dependencies": {

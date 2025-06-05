@@ -8,6 +8,5 @@ out
 *.log
 *.lock
 .openzeppelin
-artifacts
 cache
 contracts-dbg

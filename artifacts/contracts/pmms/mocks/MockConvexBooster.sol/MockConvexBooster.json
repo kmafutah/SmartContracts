@@ -1,0 +1,64 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "MockConvexBooster",
+  "sourceName": "contracts/pmms/mocks/MockConvexBooster.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_pid",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "_stake",
+          "type": "bool"
+        }
+      ],
+      "name": "deposit",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_pid",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "withdraw",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x6080806040523460145760ab908161001a8239f35b600080fdfe60808060405260043610156013575b600080fd5b600090813560e01c90816343a0d06614604d575063441a3e7003600e5734604a576040366003190112604a57602060405160018152f35b80fd5b90503460715760603660031901126071576044358015150360715780600160209252f35b5080fdfea2646970667358221220d7dc260cba8f74fb0a26ec946b7bede01fb112a0c4bf3955d5b97256ad4b8acf64736f6c63430008160033",
+  "deployedBytecode": "0x60808060405260043610156013575b600080fd5b600090813560e01c90816343a0d06614604d575063441a3e7003600e5734604a576040366003190112604a57602060405160018152f35b80fd5b90503460715760603660031901126071576044358015150360715780600160209252f35b5080fdfea2646970667358221220d7dc260cba8f74fb0a26ec946b7bede01fb112a0c4bf3955d5b97256ad4b8acf64736f6c63430008160033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

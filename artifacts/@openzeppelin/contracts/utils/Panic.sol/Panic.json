@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "Panic",
+  "sourceName": "@openzeppelin/contracts/utils/Panic.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea26469706673582212206d07f8c7811f7ac24fcc8f7135d6f0c2bbd8786037992506c7bf6c9f79ec391964736f6c63430008160033",
+  "deployedBytecode": "0x600080fdfea26469706673582212206d07f8c7811f7ac24fcc8f7135d6f0c2bbd8786037992506c7bf6c9f79ec391964736f6c63430008160033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}
