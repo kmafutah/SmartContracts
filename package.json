@@ -16,7 +16,8 @@
     "fund:localhost": "hardhat run scripts/fundDeployer.js --network localhost",
     "verify:skale": "hardhat verify --network skale",
     "verify:skale-testnet": "hardhat verify --network skale_testnet",
-    "test": "hardhat test"
+    "test": "hardhat test",
+    "build:abis": "bash scripts/build-abis.sh"
   },
   "keywords": [
     "Stablecoin",

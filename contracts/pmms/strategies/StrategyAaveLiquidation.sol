@@ -8,13 +8,14 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+// import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 interface IAaveLendingPool {
     function liquidationCall(address collateral, address debt, address user, uint256 debtToCover, bool receiveAToken) external;
 }
 
-contract StrategyAaveLiquidation is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuard {
+contract StrategyAaveLiquidation is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     address public registry;
@@ -26,6 +27,7 @@ contract StrategyAaveLiquidation is IStrategy, Initializable, UUPSUpgradeable, O
 
     function initialize(address _registry) external initializer {
         __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         registry = _registry;
     }

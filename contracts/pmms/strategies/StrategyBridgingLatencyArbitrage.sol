@@ -8,7 +8,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+// import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/IQuoterV2.sol";
@@ -28,7 +29,7 @@ interface ISkaleIMABridge {
     ) external;
 }
 
-contract StrategyBridgingLatencyArbitrage is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuard {
+contract StrategyBridgingLatencyArbitrage is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     address public registry;
@@ -75,6 +76,7 @@ contract StrategyBridgingLatencyArbitrage is IStrategy, Initializable, UUPSUpgra
     ) external initializer {
         __Ownable_init(_initialOwner);
         __UUPSUpgradeable_init();
+        __ReentrancyGuard_init();
         registry = _registry;
         uniswapRouter = ISwapRouter(_uniswapRouter);
         uniswapQuoter = IQuoterV2(_uniswapQuoter);

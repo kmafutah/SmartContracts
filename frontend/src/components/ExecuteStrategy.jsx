@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useContract } from '../hooks/useContract';
 import { ethers } from 'ethers';
+import strategyOptions from '../data/strategyOptions';
 
 const ExecuteStrategy = () => {
-  const { contract, account, isConnected, connectWallet, switchToSkaleNetwork, error } = useContract();
-  const [strategyName, setStrategyName] = useState('');
-  const [asset, setAsset] = useState('');
+  const { strategyExecutorContract, isConnected, connectWallet, switchToSkaleNetwork, error } = useContract();
+  const [selectedStrategy, setSelectedStrategy] = useState('');
   const [amount, setAmount] = useState('');
   const [params, setParams] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,19 +19,26 @@ const ExecuteStrategy = () => {
       return;
     }
 
-    if (!contract) {
+    if (!strategyExecutorContract) {
       setTxStatus('Contract not initialized');
+      return;
+    }
+
+
+    if (!selectedStrategy) {
+      setTxStatus('Please select a strategy');
       return;
     }
 
     setLoading(true);
     try {
-      // Convert amount to wei (assuming 18 decimals for simplicity)
       const amountWei = ethers.parseUnits(amount || '0', 18);
-      // Encode params as bytes (assuming params is a hex string or empty)
       const encodedParams = params || '0x';
 
-      const tx = await contract.executeStrategy(strategyName, asset, amountWei, encodedParams);
+      const strategy = strategyOptions.find(opt => opt.value === selectedStrategy);
+      const strategyName = strategy ? strategy.label : '';
+      const tx = await contract.executeStrategy(strategyName, selectedStrategy, amountWei, encodedParams);
+
       setTxStatus('Transaction sent! Waiting for confirmation...');
       const receipt = await tx.wait();
       setTxStatus(`Transaction confirmed! Hash: ${receipt.transactionHash}`);
@@ -50,24 +57,19 @@ const ExecuteStrategy = () => {
       {isConnected && (
         <form onSubmit={handleExecuteStrategy}>
           <div>
-            <label>Strategy Name:</label>
-            <input
-              type="text"
-              value={strategyName}
-              onChange={(e) => setStrategyName(e.target.value)}
-              placeholder="e.g., DEX Arbitrage"
+            <label>Select Strategy:</label>
+            <select
+              value={selectedStrategy}
+              onChange={(e) => setSelectedStrategy(e.target.value)}
               required
-            />
-          </div>
-          <div>
-            <label>Asset Address:</label>
-            <input
-              type="text"
-              value={asset}
-              onChange={(e) => setAsset(e.target.value)}
-              placeholder="0x..."
-              required
-            />
+            >
+              <option value="">-- Select a strategy --</option>
+              {strategyOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label>Amount:</label>

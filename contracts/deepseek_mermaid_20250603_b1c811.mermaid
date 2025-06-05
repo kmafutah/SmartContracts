@@ -1,0 +1,83 @@
+classDiagram
+    ZiGT --|> ZiGTBase
+    ZiGTBase --|> ZiGCrossChain
+    ZiGTBase --|> ZiGBondingCurve
+    ZiGTBase --|> ERC20Upgradeable
+    ZiGTBase --|> ReentrancyGuardUpgradeable
+    ZiGTBase --|> UUPSUpgradeable
+    
+    ZiGCrossChain --|> CCIPReceiver
+    ZiGCrossChain --|> Initializable
+    ZiGCrossChain --|> UUPSUpgradeable
+    ZiGCrossChain --|> OwnableUpgradeable
+    
+    ZiGBondingCurve --|> PRBMath
+    
+    ZiGOracleHub --|> Ownable
+    ZiGOracleHub --|> ReentrancyGuard
+    
+    ReparationsModel --|> Initializable
+    ReparationsModel --|> OwnableUpgradeable
+    ReparationsModel --|> ReentrancyGuardUpgradeable
+    ReparationsModel --|> EthicalGuard
+    
+    FeedRegistry --|> Initializable
+    FeedRegistry --|> OwnableUpgradeable
+    FeedRegistry --|> UUPSUpgradeable
+    
+    AccessVerifier --|> Initializable
+    AccessVerifier --|> UUPSUpgradeable
+    AccessVerifier --|> OwnableUpgradeable
+    
+    RedistributionVault --|> Initializable
+    RedistributionVault --|> OwnableUpgradeable
+    RedistributionVault --|> UUPSUpgradeable
+    
+    ZiGNFT --|> ERC721URIStorage
+    ZiGNFT --|> Ownable
+    
+    ZiGSoulboundToken --|> ERC721
+    ZiGSoulboundToken --|> Ownable
+    
+    ZiGGameFiToken --|> ERC20
+    ZiGGameFiToken --|> Ownable
+    
+    ZiGGovernanceToken --|> ERC20Upgradeable
+    ZiGGovernanceToken --|> ERC20PermitUpgradeable
+    ZiGGovernanceToken --|> ERC20VotesUpgradeable
+    ZiGGovernanceToken --|> OwnableUpgradeable
+    ZiGGovernanceToken --|> UUPSUpgradeable
+    
+    SoulReparationNFT --|> ERC721URIStorage
+    SoulReparationNFT --|> Ownable
+    
+    ZiGRWAToken --|> ERC20
+    ZiGRWAToken --|> Ownable
+    
+    ReparationsDAO --|> Initializable
+    ReparationsDAO --|> OwnableUpgradeable
+    ReparationsDAO --|> ReentrancyGuardUpgradeable
+    
+    EthicalGuardImpl --|> EthicalGuard
+    EthicalGuardImpl --|> UUPSUpgradeable
+    
+    ZiGGovernance --|> ERC20Votes
+    ZiGGovernance --|> CCIPReceiver
+    
+    ZiGUtilityToken --|> ERC20
+    ZiGUtilityToken --|> Ownable
+    
+    ZiGMemeToken --|> ERC20
+    ZiGMemeToken --|> Ownable
+    
+    ZiGTToken --|> ERC20Upgradeable
+    ZiGTToken --|> ERC20PermitUpgradeable
+    ZiGTToken --|> OwnableUpgradeable
+    ZiGTToken --|> UUPSUpgradeable
+    
+    ZiGT --* FeedRegistry
+    ZiGT --* ReparationsModel
+    ZiGT --* ZiGGovernanceToken
+    ReparationsModel --* AccessVerifier
+    ReparationsModel --* RedistributionVault
+    ReparationsModel --* EthicalGuard

@@ -72,6 +72,7 @@ contract ReparationsModel is Initializable, OwnableUpgradeable, ReentrancyGuardU
     ) public initializer {
         __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
+        __EthicalGuard_init(_vault); // Initialize EthicalGuard
         zigtToken = wZiGT(_zigtToken);
         redistributionVault = IRedistributionVault(_vault); // Use interface type
         accessVerifier = AccessVerifier(_verifier);
@@ -80,19 +81,6 @@ contract ReparationsModel is Initializable, OwnableUpgradeable, ReentrancyGuardU
         lastRebalance = block.timestamp;
     }
 
-    // function mint(uint256 amount) external payable nonReentrant {
-    //     require(amount > 0, "Zero amount");
-    //     uint256 fee = _getFee(msg.sender, amount);
-    //     uint256 net = amount - fee;
-    //     // Accept payment in ETH or stablecoin (mocked as msg.value for now)
-    //     require(msg.value >= amount, "Insufficient payment");
-    //     // Route fee to vault
-    //     (bool sent, ) = payable(address(redistributionVault)).call{value: fee}("");
-    //     require(sent, "Fee transfer failed");
-    //     // Mint tokens to user
-    //     zigtToken.transfer(msg.sender, net);
-    //     emit Minted(msg.sender, net, fee);
-    // }
 
     function mint(uint256 amount) external nonReentrant {
         require(amount > 0, "Zero amount");
@@ -113,7 +101,8 @@ contract ReparationsModel is Initializable, OwnableUpgradeable, ReentrancyGuardU
     }
 
 
-    function redeem(uint256 amount) external nonReentrant reparationBeforeProfit {
+function redeem(uint256 amount) external nonReentrant reparationBeforeProfit {
+        require(zigtToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
         require(amount > 0, "Zero amount");
         require(zigtToken.balanceOf(msg.sender) >= amount, "Insufficient balance");
         uint256 fee = _getFee(msg.sender, amount);

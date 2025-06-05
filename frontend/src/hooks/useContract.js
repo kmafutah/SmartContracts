@@ -1,14 +1,22 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import ProfitMaximizerModularSystemABI from '../abi/ProfitMaximizerModularSystem.json';
+import StrategyExecutorABI from '../abi/StrategyExecutor.json';
+import RegistryABI from '../abi/RegistryVerifiedABI.json'; // Make sure to import the correct ABI
 
-const CONTRACT_ADDRESS = '0xf1d4fe115BE39c2c71b54256cC657b4496d36A65'; // New PMMS address
+// Updated contract addresses from your deployment
+const PMMS_ADDRESS = '0x5e1BBe9c436c8D33Ef87E489b6Cc391B48a6DEbE'; // From your deployment.json
+const STRATEGY_EXECUTOR_ADDRESS = '0xBcDdF9aaDcF13603317220B89165b02f51E7607b'; // From your deployment.json
+const REGISTRY_ADDRESS = '0xCCBF4c54915B58e8dC5Dd6B0fe178467698A3a3C'; // From your deployment.json
 const SKALE_TESTNET_RPC = 'https://juicy-low-small-testnet-rpc.testnet.skalenodes.com';
+const SKALE_CHAIN_ID = '0x5f6d';
 
 export const useContract = () => {
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
-  const [contract, setContract] = useState(null);
+  const [pmmsContract, setPmmsContract] = useState(null);
+  const [strategyExecutorContract, setStrategyExecutorContract] = useState(null);
+  const [registryContract, setRegistryContract] = useState(null);
   const [account, setAccount] = useState(null);
   const [error, setError] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -24,27 +32,30 @@ export const useContract = () => {
       const accounts = await provider.send('eth_requestAccounts', []);
       const signer = await provider.getSigner();
 
-      // Extract ABI from Hardhat artifact
-      let abi;
-      if (Array.isArray(ProfitMaximizerModularSystemABI)) {
-        abi = ProfitMaximizerModularSystemABI;
-      } else if (ProfitMaximizerModularSystemABI && Array.isArray(ProfitMaximizerModularSystemABI.abi)) {
-        abi = ProfitMaximizerModularSystemABI.abi;
-      } else {
-        throw new Error('Invalid ABI format: Expected an array or object with an "abi" array');
-      }
+      const pmmsAbi = Array.isArray(ProfitMaximizerModularSystemABI)
+        ? ProfitMaximizerModularSystemABI
+        : ProfitMaximizerModularSystemABI.abi;
+      const strategyExecutorAbi = Array.isArray(StrategyExecutorABI)
+        ? StrategyExecutorABI
+        : StrategyExecutorABI.abi;
 
-      console.log('ABI loaded:', abi); // Debug
-
-      const contractInstance = new ethers.Contract(
-        CONTRACT_ADDRESS,
-        abi,
+      const pmmsInstance = new ethers.Contract(PMMS_ADDRESS, pmmsAbi, signer);
+      const strategyExecutorInstance = new ethers.Contract(
+        STRATEGY_EXECUTOR_ADDRESS,
+        strategyExecutorAbi,
+        signer
+      );
+      const registryInstance = new ethers.Contract(
+        REGISTRY_ADDRESS,
+        strategyExecutorAbi, // Assuming similar functionality
         signer
       );
 
       setProvider(provider);
       setSigner(signer);
-      setContract(contractInstance);
+      setPmmsContract(pmmsInstance);
+      setStrategyExecutorContract(strategyExecutorInstance);
+      setRegistryContract(registryInstance);
       setAccount(accounts[0]);
       setIsConnected(true);
       setError(null);
@@ -58,7 +69,7 @@ export const useContract = () => {
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0x' + (1500292005).toString(16) }],
+        params: [{ chainId: SKALE_CHAIN_ID }],
       });
     } catch (switchError) {
       if (switchError.code === 4902) {
@@ -66,7 +77,7 @@ export const useContract = () => {
           method: 'wallet_addEthereumChain',
           params: [
             {
-              chainId: '0x' + (1500292005).toString(16),
+              chainId: SKALE_CHAIN_ID,
               chainName: 'SKALE Testnet (Juicy Low Small)',
               rpcUrls: [SKALE_TESTNET_RPC],
               nativeCurrency: {
@@ -96,5 +107,16 @@ export const useContract = () => {
     }
   }, []);
 
-  return { provider, signer, contract, account, isConnected, error, connectWallet, switchToSkaleNetwork };
+  return {
+    provider,
+    signer,
+    contract: strategyExecutorContract,
+    pmmsContract,
+    registryContract,
+    account,
+    isConnected,
+    error,
+    connectWallet,
+    switchToSkaleNetwork,
+  };
 };

@@ -37,18 +37,9 @@ contract ZiGGovernanceToken is Initializable, ERC20Upgradeable, ERC20PermitUpgra
         _mint(treasuryAddress, initialSupply);
     }
 
-    // ... rest of the contract (mint, _authorizeUpgrade, _update, nonces, snapshot) ...
-
-    // Ensure _update and nonces correctly override all necessary parents
-    // For ERC20VotesUpgradeable, you'd need to manage checkpoints (_writeCheckpoint)
-    // and potentially override _afterTokenTransfer, _mint, _burn.
-    // OpenZeppelin's ERC20VotesUpgradeable handles this internally.
-
-    // --- Overrides required by Solidity for ERC20Votes ---
-    // (Adjust based on actual ERC20VotesUpgradeable structure)
     function _update(address from, address to, uint256 value)
         internal
-        override(ERC20Upgradeable, ERC20VotesUpgradeable) // Ensure correct parents
+        override(ERC20Upgradeable, ERC20VotesUpgradeable)
     {
         super._update(from, to, value);
     }
@@ -56,7 +47,7 @@ contract ZiGGovernanceToken is Initializable, ERC20Upgradeable, ERC20PermitUpgra
     function nonces(address owner)
         public
         view
-        override(ERC20PermitUpgradeable, NoncesUpgradeable) // Ensure correct parents
+        override(ERC20PermitUpgradeable, NoncesUpgradeable)
         returns (uint256)
     {
         return super.nonces(owner);

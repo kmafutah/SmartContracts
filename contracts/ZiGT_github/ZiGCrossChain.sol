@@ -7,38 +7,29 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-abstract contract ZiGCrossChain is Initializable, UUPSUpgradeable, CCIPReceiver, OwnableUpgradeable {
+abstract contract ZiGCrossChain is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     uint64 public constant DEST_CHAIN_SELECTOR = 16015286601757825753;
     address public i_router;
-
-    // Events
     event MessageSent(bytes32 messageId);
     event MessageReceived(bytes32 messageId);
+    address public routerAddress;
 
-    // Disable initializers in the implementation contract
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
 
-    // Initializer for upgradable contract
     function initialize(address ccipRouter, address initialOwner) public virtual initializer {
         require(ccipRouter != address(0), "Invalid router address");
         require(initialOwner != address(0), "Invalid owner address");
-        __UUPSUpgradeable_init();
         __Ownable_init(initialOwner);
-        __ZiGCrossChain_init(ccipRouter);
+        __UUPSUpgradeable_init();
+        routerAddress = ccipRouter;
+        i_router = routerAddress;
     }
 
-    // Internal initializer for ZiGCrossChain
-    function __ZiGCrossChain_init(address ccipRouter) internal onlyInitializing {
-        i_router = ccipRouter;
-    }
+    function _authorizeUpgrade(address newImplementation) internal virtual override onlyOwner {}
 
-    // Required for UUPSUpgradeable: Authorize upgrade (only owner/governance)
-    function _authorizeUpgrade(address newImplementation) internal virtual override onlyOwner {
-        // Only owner can authorize upgrades
-    }
 
     // Send cross-chain message
     function _sendCrossChainMessage(
@@ -69,7 +60,7 @@ abstract contract ZiGCrossChain is Initializable, UUPSUpgradeable, CCIPReceiver,
     }
 
     // Receive cross-chain message
-    function _ccipReceive(Client.Any2EVMMessage memory message) internal virtual override {
+    function _ccipReceive(Client.Any2EVMMessage memory message) internal virtual {
         require(message.sourceChainSelector == DEST_CHAIN_SELECTOR, "Invalid chain");
 
         (address target, bytes memory data) = abi.decode(message.data, (address, bytes));

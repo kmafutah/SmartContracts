@@ -13,7 +13,9 @@ abstract contract EthicalGuard is Initializable, OwnableUpgradeable {
     IRedistributionVault public redistributionVault;
     uint256 public totalFeesCollected;
 
+
     function __EthicalGuard_init(address _vault) internal onlyInitializing {
+        __Ownable_init(msg.sender); // Initialize OwnableUpgradeable
         redistributionVault = IRedistributionVault(_vault);
     }
 

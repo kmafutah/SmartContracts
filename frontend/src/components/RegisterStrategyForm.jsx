@@ -1,74 +1,52 @@
 import React, { useState } from 'react';
 import { useContract } from '../hooks/useContract';
 
-const RegisterStrategyForm = () => {
-  const { contract, account, isConnected, connectWallet, switchToSkaleNetwork, error } = useContract();
-  const [strategyName, setStrategyName] = useState('');
-  const [strategyAddress, setStrategyAddress] = useState('');
+const ContractInteractor = () => {
+  const contract = useContract(); // Custom hook to get the contract instance
+  const [value, setValue] = useState('');
+  const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
-  const [txStatus, setTxStatus] = useState('');
 
-  const handleRegisterStrategy = async (e) => {
-    e.preventDefault();
-    if (!isConnected) {
-      await connectWallet();
-      await switchToSkaleNetwork();
-      return;
-    }
-
-    if (!contract) {
-      setTxStatus('Contract not initialized');
-      return;
-    }
-
-    setLoading(true);
+  const handleSetValue = async () => {
     try {
-      const tx = await contract.addStrategy(strategyName, strategyAddress);
-      setTxStatus('Transaction sent! Waiting for confirmation...');
-      const receipt = await tx.wait();
-      setTxStatus(`Strategy registered! Hash: ${receipt.transactionHash}`);
+      setLoading(true);
+      const tx = await contract.setValue(value); // assuming the contract has a setValue method
+      await tx.wait(); // wait for the transaction to be mined
+      alert('Transaction successful!');
     } catch (err) {
-      setTxStatus(`Error: ${err.message}`);
+      console.error(err);
+      alert('Transaction failed!');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleGetValue = async () => {
+    try {
+      const result = await contract.getValue(); // assuming the contract has a getValue method
+      setResponse(result);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to fetch value!');
+    }
+  };
+
   return (
-    <div className="register-strategy">
-      <h2>Register Strategy</h2>
-      {error && <p className="error">{error}</p>}
-      {!isConnected && <button onClick={connectWallet}>Connect Wallet</button>}
-      {isConnected && (
-        <form onSubmit={handleRegisterStrategy}>
-          <div>
-            <label>Strategy Name:</label>
-            <input
-              type="text"
-              value={strategyName}
-              onChange={(e) => setStrategyName(e.target.value)}
-              placeholder="e.g., DEX Arbitrage"
-              required
-            />
-          </div>
-          <div>
-            <label>Strategy Address:</label>
-            <input
-              type="text"
-              value={strategyAddress}
-              onChange={(e) => setStrategyAddress(e.target.value)}
-              placeholder="0x..."
-              required
-            />
-          </div>
-          <button type="submit" disabled={loading}>
-            {loading ? 'Registering...' : 'Register Strategy'}
-          </button>
-        </form>
-      )}
-      {txStatus && <p>{txStatus}</p>}
+    <div>
+      <h2>Contract Interactor</h2>
+      <input
+        type="text"
+        placeholder="Enter value"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <button onClick={handleSetValue} disabled={loading}>
+        {loading ? 'Setting...' : 'Set Value'}
+      </button>
+      <button onClick={handleGetValue}>Get Value</button>
+      <p>Response from contract: {response}</p>
     </div>
   );
 };
 
-export default RegisterStrategyForm;
+export default ContractInteractor;

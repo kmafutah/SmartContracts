@@ -1,0 +1,487 @@
+// ===== frontend/src/components/MintForm.jsx =====
+
+
+// ===== frontend/src/components/ExecuteStrategy.jsx =====
+import React, { useState } from 'react';
+import { useContract } from '../hooks/useContract';
+import { ethers } from 'ethers';
+import strategyOptions from '../data/strategyOptions';
+
+const ExecuteStrategy = () => {
+  const { strategyExecutorContract, isConnected, connectWallet, switchToSkaleNetwork, error } = useContract();
+  const [selectedStrategy, setSelectedStrategy] = useState('');
+  const [amount, setAmount] = useState('');
+  const [params, setParams] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [txStatus, setTxStatus] = useState('');
+
+  const handleExecuteStrategy = async (e) => {
+    e.preventDefault();
+    if (!isConnected) {
+      await connectWallet();
+      await switchToSkaleNetwork();
+      return;
+    }
+
+    if (!strategyExecutorContract) {
+      setTxStatus('Contract not initialized');
+      return;
+    }
+
+    if (!contract) {
+      setTxStatus('Contract not initialized');
+      return;
+    }
+
+    if (!selectedStrategy) {
+      setTxStatus('Please select a strategy');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const amountWei = ethers.parseUnits(amount || '0', 18);
+      const encodedParams = params || '0x';
+
+      const strategy = strategyOptions.find(opt => opt.value === selectedStrategy);
+      const strategyName = strategy ? strategy.label : '';
+      const tx = await contract.executeStrategy(strategyName, selectedStrategy, amountWei, encodedParams);
+
+      setTxStatus('Transaction sent! Waiting for confirmation...');
+      const receipt = await tx.wait();
+      setTxStatus(`Transaction confirmed! Hash: ${receipt.transactionHash}`);
+    } catch (err) {
+      setTxStatus(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="execute-strategy">
+      <h2>Execute Strategy</h2>
+      {error && <p className="error">{error}</p>}
+      {!isConnected && <button onClick={connectWallet}>Connect Wallet</button>}
+      {isConnected && (
+        <form onSubmit={handleExecuteStrategy}>
+          <div>
+            <label>Select Strategy:</label>
+            <select
+              value={selectedStrategy}
+              onChange={(e) => setSelectedStrategy(e.target.value)}
+              required
+            >
+              <option value="">-- Select a strategy --</option>
+              {strategyOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Amount:</label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Amount in tokens"
+              required
+            />
+          </div>
+          <div>
+            <label>Params (bytes):</label>
+            <input
+              type="text"
+              value={params}
+              onChange={(e) => setParams(e.target.value)}
+              placeholder="0x..."
+            />
+          </div>
+          <button type="submit" disabled={loading}>
+            {loading ? 'Executing...' : 'Execute Strategy'}
+          </button>
+        </form>
+      )}
+      {txStatus && <p>{txStatus}</p>}
+    </div>
+  );
+};
+
+export default ExecuteStrategy;
+
+
+// ===== frontend/src/components/RegisterStrategyForm.jsx =====
+import React, { useState } from 'react';
+import { useContract } from '../hooks/useContract';
+
+const RegisterStrategyForm = () => {
+  const { registryContract, account, isConnected, connectWallet, switchToSkaleNetwork, error } = useContract();
+  const [strategyName, setStrategyName] = useState('');
+  const [strategyAddress, setStrategyAddress] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [txStatus, setTxStatus] = useState('');
+
+    e.preventDefault();
+    if (!isConnected) {
+      await connectWallet();
+      await switchToSkaleNetwork();
+      return;
+    }
+
+    if (!registryContract) {
+      setTxStatus('Contract not initialized');
+      return;
+    }
+
+    if (!contract) {
+      setTxStatus('Contract not initialized');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const tx = await registryContract.addStrategy(strategyName, strategyAddress);
+      setTxStatus('Transaction sent! Waiting for confirmation...');
+      const receipt = await tx.wait();
+      setTxStatus(`Strategy registered! Hash: ${receipt.transactionHash}`);
+    } catch (err) {
+      setTxStatus(`Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="register-strategy">
+      <h2>Register Strategy</h2>
+      {error && <p className="error">{error}</p>}
+      {!isConnected && <button onClick={connectWallet}>Connect Wallet</button>}
+      {isConnected && (
+        <form onSubmit={handleRegisterStrategy}>
+          <div>
+            <label>Strategy Name:</label>
+            <input
+              type="text"
+              value={strategyName}
+              onChange={(e) => setStrategyName(e.target.value)}
+              placeholder="e.g., DEX Arbitrage"
+              required
+            />
+          </div>
+          <div>
+            <label>Strategy Address:</label>
+            <input
+              type="text"
+              value={strategyAddress}
+              onChange={(e) => setStrategyAddress(e.target.value)}
+              placeholder="0x..."
+              required
+            />
+          </div>
+          <button type="submit" disabled={loading}>
+            {loading ? 'Registering...' : 'Register Strategy'}
+          </button>
+        </form>
+      )}
+      {txStatus && <p>{txStatus}</p>}
+    </div>
+  );
+};
+
+export default RegisterStrategyForm;
+
+// ===== frontend/src/components/RedeemForm.jsx =====
+
+
+// ===== frontend/src/components/AutoExecutor.jsx =====
+// src/components/AutoExecutor.jsx
+import React, { useEffect, useState } from 'react';
+import { ethers } from 'ethers';
+import { useContract } from '../hooks/useContract';
+// import RegistryABI from '../abi/Registry.json';
+import RegistryABI from '../abi/RegistryVerifiedABI.json';
+
+
+const AutoExecutor = () => {
+  const { registryContract, isConnected, connectWallet, switchToSkaleNetwork, account } = useContract();
+  const [autoRun, setAutoRun] = useState(false);
+  const [log, setLog] = useState([]);
+  const [intervalId, setIntervalId] = useState(null);
+  const [amount, setAmount] = useState('1');
+  const [strategies, setStrategies] = useState([]);
+
+  const registryAddress = "0xCCBF4c54915B58e8dC5Dd6B0fe178467698A3a3C";
+
+  const loadStrategies = async () => {
+    try {
+      if (!registryContract) return;
+      
+      // Get all strategy names from the registry
+      const strategyNames = await registryContract.getAllStrategyNames();
+      
+      const results = [];
+      for (let name of strategyNames) {
+        const addr = await registryContract.getStrategy(name);
+        results.push({ name, address: addr });
+      }
+      setStrategies(results);
+    } catch (err) {
+      console.error("Error loading strategies:", err);
+      setLog(log => [`❌ Could not load strategies: ${err.message}`, ...log]);
+    }
+  };
+
+
+  const runOpportunityCheck = async () => {
+    try {
+      if (!contract || !isConnected) return;
+      for (const strat of strategies) {
+        const amountWei = ethers.parseUnits(amount, 18);
+        const check = await contract.checkOpportunity(strat.address, amountWei);
+        const isProfitable = check && check.profit && check.profit > 0;
+        if (isProfitable) {
+          const tx = await contract.executeStrategy(strat.name, strat.address, amountWei, check.data || '0x');
+          setLog(log => [`✅ Executed ${strat.name} | Tx: ${tx.hash}`, ...log]);
+        } else {
+          setLog(log => [`🔎 Checked ${strat.name} | No profit`, ...log]);
+        }
+      }
+    } catch (err) {
+      setLog(log => [`❌ Error: ${err.message}`, ...log]);
+    }
+  };
+
+  const toggleAutoRun = () => {
+    setAutoRun(!autoRun);
+    if (!autoRun) {
+      const id = setInterval(runOpportunityCheck, 30000);
+      setIntervalId(id);
+    } else {
+      clearInterval(intervalId);
+    }
+  };
+
+  useEffect(() => {
+    if (isConnected) loadStrategies();
+  }, [isConnected]);
+
+  return (
+    <div className="bg-gray-50 border border-gray-200 p-6 rounded-lg">
+      <h2 className="text-2xl font-bold text-blue-700 mb-4">Auto Strategy Executor</h2>
+      {!isConnected ? (
+        <button
+          onClick={connectWallet}
+          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          Connect Wallet
+        </button>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">Connected: <span className="font-mono text-green-600">{account}</span></p>
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium">Token Amount:</label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="px-2 py-1 border border-gray-300 rounded w-28"
+            />
+            <button
+              onClick={toggleAutoRun}
+              className={`px-4 py-2 text-white rounded ${autoRun ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
+            >
+              {autoRun ? 'Stop AutoRun' : 'Start AutoRun'}
+            </button>
+            <button
+  onClick={async () => {
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const storageSlot = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+    const raw = await provider.getStorage(registryAddress, storageSlot);
+    const implAddress = ethers.getAddress("0x" + raw.slice(-40));
+    setLog(log => [`🔍 Registry implementation: ${implAddress}`, ...log]);
+  }}
+  className="mt-4 px-3 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700"
+>
+  Check Proxy Implementation
+</button>
+
+          </div>
+        </div>
+      )}
+      <div className="mt-6">
+        <h4 className="text-lg font-semibold mb-2">Execution Log</h4>
+        <ul className="text-sm bg-white border rounded p-3 max-h-60 overflow-y-auto space-y-1">
+          {log.map((entry, i) => (
+            <li key={i} className="whitespace-nowrap">{entry}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+};
+
+export default AutoExecutor;
+
+
+
+
+// ===== frontend/src/components/OracleStatus.jsx =====
+
+
+// ===== frontend/src/components/StrategyList.jsx =====
+import React, { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
+import { useContract } from '../hooks/useContract';
+import strategyOptions from '../data/strategyOptions';
+
+const StrategyList = () => {
+  const { strategyExecutorContract, isConnected, connectWallet, switchToSkaleNetwork, error } = useContract();
+  const [strategies, setStrategies] = useState([]);
+  const [txStatus, setTxStatus] = useState('');
+  const [loadingStrategy, setLoadingStrategy] = useState(null);
+  
+
+  useEffect(() => {
+    setStrategies(strategyOptions);
+  }, []);
+
+  const handleFindOpportunity = async (strategyName, assetAddress, amount) => {
+    setLoadingStrategy(strategyName + '_find');
+    setTxStatus('');
+    try {
+      const amountWei = ethers.parseUnits(amount.toString(), 18);
+      const tx = await contract.checkOpportunity(assetAddress, amountWei);
+      setTxStatus(`Check completed: ${JSON.stringify(tx)}`);
+    } catch (err) {
+      setTxStatus(`Error checking opportunity: ${err.message}`);
+    } finally {
+      setLoadingStrategy(null);
+    }
+  };
+
+  const handleExecute = async (strategyName, strategyAddress, amount) => {
+    setLoadingStrategy(strategyName + '_exec');
+    setTxStatus('');
+    try {
+      if (!isConnected) {
+        await connectWallet();
+        await switchToSkaleNetwork();
+      }
+
+      const amountWei = ethers.parseUnits(amount.toString(), 18);
+      const tx = await contract.executeStrategy(strategyName, strategyAddress, amountWei, '0x');
+      setTxStatus('Executing strategy...');
+      const receipt = await tx.wait();
+      setTxStatus(`Executed! Tx Hash: ${receipt.transactionHash}`);
+    } catch (err) {
+      setTxStatus(`Execution failed: ${err.message}`);
+    } finally {
+      setLoadingStrategy(null);
+    }
+  };
+
+  return (
+    <div className="strategy-list">
+      <h2>Deployed Strategies</h2>
+      {error && <p className="error">{error}</p>}
+      {!isConnected && <button onClick={connectWallet}>Connect Wallet</button>}
+      {strategies.length === 0 ? (
+        <p>No strategies deployed.</p>
+      ) : (
+        <ul>
+          {strategies.map((strategy, index) => (
+            <li key={index} style={{ marginBottom: '1.5rem' }}>
+              <strong>{strategy.label}</strong><br />
+              Address: <code>{strategy.value}</code>
+              <br />
+              <label>
+                Amount:
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 1"
+                  id={`amount_${index}`}
+                  style={{ marginLeft: '0.5rem', width: '100px' }}
+                />
+              </label>
+              <br />
+              <button
+                disabled={loadingStrategy === strategy.label + '_find'}
+                onClick={() => handleFindOpportunity(strategy.label, strategy.value, document.getElementById(`amount_${index}`).value)}
+              >
+                {loadingStrategy === strategy.label + '_find' ? 'Checking...' : 'Find Opportunity'}
+              </button>
+              <button
+                style={{ marginLeft: '1rem' }}
+                disabled={loadingStrategy === strategy.label + '_exec'}
+                onClick={() => handleExecute(strategy.label, strategy.value, document.getElementById(`amount_${index}`).value)}
+              >
+                {loadingStrategy === strategy.label + '_exec' ? 'Executing...' : 'Execute'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {txStatus && <p>{txStatus}</p>}
+    </div>
+  );
+};
+
+export default StrategyList;
+
+// ===== frontend/src/main.jsx =====
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.jsx';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+// ===== frontend/src/App.jsx =====
+import React from 'react';
+import Dashboard from './pages/Dashboard';
+import './App.css';
+
+function App() {
+  return (
+    <div className="App">
+      <Dashboard />
+    </div>
+  );
+}
+
+export default App;
+
+// ===== frontend/src/pages/Dashboard.jsx =====
+// src/pages/Dashboard.jsx
+import React from 'react';
+import AutoExecutor from '../components/AutoExecutor';
+
+const Dashboard = () => {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-100 to-blue-50 p-8 text-gray-800">
+      <div className="max-w-6xl mx-auto">
+        <header className="mb-8 text-center">
+          <h1 className="text-4xl md:text-5xl font-extrabold text-blue-800 mb-2">
+            PMMS Strategy Dashboard
+          </h1>
+          <p className="text-gray-600 text-lg">
+            Automate DeFi arbitrage, liquidation, and rebalancing strategies on-chain
+          </p>
+        </header>
+        <section className="grid grid-cols-1 md:grid-cols-1 gap-6">
+          <AutoExecutor />
+        </section>
+      </div>
+    </div>
+  );
+};
+
+export default Dashboard;
+
+

@@ -1,14 +1,17 @@
-// SPDX-License-License: UNLICENSED
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
 import "../interfaces/IStrategy.sol";
 import "../interfaces/IRegistry.sol";
-import "../interfaces/INftFloorOracle.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+// import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 interface ISkaleNftMarket {
     function getFloorPrice(address nftCollection) external view returns (uint256);
@@ -16,26 +19,39 @@ interface ISkaleNftMarket {
     function sell(address nftCollection, uint256 tokenId, uint256 price) external returns (bool);
 }
 
-contract StrategyNFTFloorArbitrage is IStrategy, Ownable, ReentrancyGuard {
+contract StrategyNFTFloorArbitrage is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IERC721Receiver {
     using SafeERC20 for IERC20;
 
-    address public immutable registry;
-    uint256 public minProfitMargin = 500; // 5% (basis points)
+    address public registry;
+    uint256 public minProfitMargin; // 5% (500 basis points)
 
     event ArbitrageExecuted(
         address indexed nftCollection,
+        uint256 indexed tokenId,
         uint256 buyPrice,
         uint256 sellPrice,
         uint256 profit,
         address indexed marketplace
     );
 
-    constructor(address _registry, address _initialOwner) Ownable(_initialOwner) {
-        registry = _registry;
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers(); // Prevent initialization during deployment
     }
 
-    function name() external pure returns (string memory) {
-        return "NFT Floor Arbitrage";
+    function initialize(address _registry) external initializer {
+        require(_registry != address(0), "Invalid registry");        
+        __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+        registry = _registry;
+        minProfitMargin = 500; // 5%
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    function name() external pure override returns (string memory) {
+        return "NFTFloorArbitrage";
     }
 
     function checkOpportunity(address asset, uint256 amount)
@@ -46,18 +62,35 @@ contract StrategyNFTFloorArbitrage is IStrategy, Ownable, ReentrancyGuard {
     {
         address marketplace = IRegistry(registry).getAddress("NFT_MARKETPLACE");
         address externalMarket = IRegistry(registry).getAddress("EXTERNAL_NFT_MARKET");
-        require(marketplace != address(0) && externalMarket != address(0), "Markets not set");
+        if (marketplace == address(0) || externalMarket == address(0)) return (0, "");
 
-        uint256 chainlinkPrice = IRegistry(registry).getNftFloorPrice(asset);
+        uint256 chainlinkPrice;
+        try IRegistry(registry).getNftFloorPrice(asset) returns (uint256 price) {
+            chainlinkPrice = price;
+        } catch {
+            return (0, "");
+        }
         if (chainlinkPrice == 0) return (0, "");
 
-        uint256 marketplacePrice = ISkaleNftMarket(marketplace).getFloorPrice(asset);
-        uint256 externalPrice = ISkaleNftMarket(externalMarket).getFloorPrice(asset);
+        uint256 marketplacePrice;
+        try ISkaleNftMarket(marketplace).getFloorPrice(asset) returns (uint256 price) {
+            marketplacePrice = price;
+        } catch {
+            return (0, "");
+        }
+
+        uint256 externalPrice;
+        try ISkaleNftMarket(externalMarket).getFloorPrice(asset) returns (uint256 price) {
+            externalPrice = price;
+        } catch {
+            return (0, "");
+        }
         if (marketplacePrice == 0 || externalPrice == 0) return (0, "");
 
         uint256 buyPrice;
         uint256 sellPrice;
         bool buyFromMarketplace;
+        uint256 tokenId = 1; // Off-chain monitoring provides tokenId
 
         if (externalPrice < marketplacePrice) {
             buyPrice = externalPrice;
@@ -71,13 +104,13 @@ contract StrategyNFTFloorArbitrage is IStrategy, Ownable, ReentrancyGuard {
             return (0, "");
         }
 
-        if (buyPrice > amount) return (0, "");
+        if (buyPrice > amount || tokenId == 0) return (0, "");
 
         uint256 profitMargin = ((sellPrice - buyPrice) * 10000) / buyPrice;
         if (profitMargin < minProfitMargin) return (0, "");
 
         profit = sellPrice - buyPrice;
-        executionData = abi.encode(asset, marketplace, externalMarket, buyFromMarketplace);
+        executionData = abi.encode(asset, marketplace, externalMarket, buyFromMarketplace, tokenId);
         return (profit, executionData);
     }
 
@@ -85,19 +118,35 @@ contract StrategyNFTFloorArbitrage is IStrategy, Ownable, ReentrancyGuard {
         external
         override
         nonReentrant
-        returns (bool success, bytes memory result, uint256)
+        returns (bool success, bytes memory result, uint256 profit)
     {
-        (address nftCollection, address marketplace, address externalMarket, bool buyFromMarketplace) = abi.decode(
+        (address nftCollection, address marketplace, address externalMarket, bool buyFromMarketplace, uint256 tokenId) = abi.decode(
             executionData,
-            (address, address, address, bool)
+            (address, address, address, bool, uint256)
         );
-        require(nftCollection != address(0), "Invalid NFT collection");
+        require(nftCollection != address(0) && tokenId != 0, "Invalid NFT collection or tokenId");
 
-        uint256 chainlinkPrice = IRegistry(registry).getNftFloorPrice(nftCollection);
+        uint256 chainlinkPrice;
+        try IRegistry(registry).getNftFloorPrice(nftCollection) returns (uint256 price) {
+            chainlinkPrice = price;
+        } catch {
+            revert("Invalid Chainlink price");
+        }
         require(chainlinkPrice > 0, "Invalid Chainlink price");
 
-        uint256 marketplacePrice = ISkaleNftMarket(marketplace).getFloorPrice(nftCollection);
-        uint256 externalPrice = ISkaleNftMarket(externalMarket).getFloorPrice(nftCollection);
+        uint256 marketplacePrice;
+        try ISkaleNftMarket(marketplace).getFloorPrice(nftCollection) returns (uint256 price) {
+            marketplacePrice = price;
+        } catch {
+            revert("Invalid marketplace price");
+        }
+
+        uint256 externalPrice;
+        try ISkaleNftMarket(externalMarket).getFloorPrice(nftCollection) returns (uint256 price) {
+            externalPrice = price;
+        } catch {
+            revert("Invalid external market price");
+        }
         require(marketplacePrice > 0 && externalPrice > 0, "Invalid market prices");
 
         uint256 buyPrice;
@@ -121,39 +170,62 @@ contract StrategyNFTFloorArbitrage is IStrategy, Ownable, ReentrancyGuard {
         require(token.balanceOf(address(this)) >= buyPrice, "Insufficient WETH");
 
         bool buySuccess;
-        uint256 tokenId = 0; // Simplified; real tokenId from event
         if (buyFromMarketplace) {
             token.approve(marketplace, buyPrice);
-            buySuccess = ISkaleNftMarket(marketplace).buy(nftCollection, tokenId, buyPrice);
+            try ISkaleNftMarket(marketplace).buy(nftCollection, tokenId, buyPrice) returns (bool success) {
+                buySuccess = success;
+            } catch {
+                revert("Buy failed");
+            }
             token.approve(marketplace, 0);
         } else {
             token.approve(externalMarket, buyPrice);
-            buySuccess = ISkaleNftMarket(externalMarket).buy(nftCollection, tokenId, buyPrice);
+            try ISkaleNftMarket(externalMarket).buy(nftCollection, tokenId, buyPrice) returns (bool success) {
+                buySuccess = success;
+            } catch {
+                revert("Buy failed");
+            }
             token.approve(externalMarket, 0);
         }
         require(buySuccess, "Buy failed");
+        require(IERC721(nftCollection).ownerOf(tokenId) == address(this), "NFT not received");
 
         bool sellSuccess;
         IERC721(nftCollection).approve(buyFromMarketplace ? externalMarket : marketplace, tokenId);
         if (buyFromMarketplace) {
-            sellSuccess = ISkaleNftMarket(externalMarket).sell(nftCollection, tokenId, sellPrice);
+            try ISkaleNftMarket(externalMarket).sell(nftCollection, tokenId, sellPrice) returns (bool success) {
+                sellSuccess = success;
+            } catch {
+                revert("Sell failed");
+            }
         } else {
-            sellSuccess = ISkaleNftMarket(marketplace).sell(nftCollection, tokenId, sellPrice);
+            try ISkaleNftMarket(marketplace).sell(nftCollection, tokenId, sellPrice) returns (bool success) {
+                sellSuccess = success;
+            } catch {
+                revert("Sell failed");
+            }
         }
         IERC721(nftCollection).approve(address(0), tokenId);
         require(sellSuccess, "Sell failed");
 
-        uint256 profit = sellPrice - buyPrice;
+        profit = sellPrice - buyPrice;
         require(profit > premium, "Profit does not cover premium");
 
-        emit ArbitrageExecuted(nftCollection, buyPrice, sellPrice, profit, buyFromMarketplace ? marketplace : externalMarket);
+        emit ArbitrageExecuted(
+            nftCollection,
+            tokenId,
+            buyPrice,
+            sellPrice,
+            profit,
+            buyFromMarketplace ? marketplace : externalMarket
+        );
 
         success = true;
         result = abi.encode(nftCollection, tokenId, profit);
-        return (success, result, profit - premium);
+        return (success, result, profit);
     }
 
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+    function onERC721Received(address, address, uint256, bytes calldata) external pure override returns (bytes4) {
         return this.onERC721Received.selector;
     }
 }

@@ -9,13 +9,14 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+// import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 interface ISkaleNftLending {
     function liquidate(address nftContract, uint256 tokenId, uint256 amount) external;
 }
 
-contract StrategyNFTCollateralLiquidation is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuard, IERC721Receiver {
+contract StrategyNFTCollateralLiquidation is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, IERC721Receiver {
     using SafeERC20 for IERC20;
 
     address public registry;
@@ -28,8 +29,9 @@ contract StrategyNFTCollateralLiquidation is IStrategy, Initializable, UUPSUpgra
     }
 
     function initialize(address _registry) external initializer {
-        require(_registry != address(0), "Invalid registry");
+        require(_registry != address(0), "Invalid registry");       
         __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         registry = _registry;
     }

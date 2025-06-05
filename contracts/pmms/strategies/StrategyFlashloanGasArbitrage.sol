@@ -7,7 +7,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+// import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
@@ -23,7 +24,7 @@ interface IWETH {
     function balanceOf(address account) external view returns (uint256);
 }
 
-contract StrategyFlashloanGasArbitrage is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuard {
+contract StrategyFlashloanGasArbitrage is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     address public registry;
@@ -38,8 +39,9 @@ contract StrategyFlashloanGasArbitrage is IStrategy, Initializable, UUPSUpgradea
     }
 
     function initialize(address _registry) external initializer {
-        require(_registry != address(0), "Invalid registry");
+        require(_registry != address(0), "Invalid registry");       
         __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();         
         __UUPSUpgradeable_init();
         registry = _registry;
         slippageTolerance = 50; // 0.5%

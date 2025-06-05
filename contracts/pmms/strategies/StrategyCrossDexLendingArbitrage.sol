@@ -9,9 +9,10 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+// import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
-contract StrategyCrossDexLendingArbitrage is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuard {
+contract StrategyCrossDexLendingArbitrage is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     address public registry;
@@ -21,8 +22,9 @@ contract StrategyCrossDexLendingArbitrage is IStrategy, Initializable, UUPSUpgra
         _disableInitializers(); // Prevent initialization during deployment
     }
 
-    function initialize(address _registry) external initializer {
+    function initialize(address _registry) external initializer {      
         __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         registry = _registry;
     }

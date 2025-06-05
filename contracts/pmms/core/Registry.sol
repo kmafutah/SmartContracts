@@ -79,5 +79,12 @@ contract Registry is Initializable, IRegistry, OwnableUpgradeable, UUPSUpgradeab
         return INftFloorOracle(nftFloorOracle).getFloorPrice(nftContract);
     }
 
+    function addStrategy(string memory name, address strategy) external onlyOwner {
+        require(strategy != address(0), "Invalid strategy address");
+        strategies[name] = strategy;
+        strategyNames.push(name);
+        emit StrategyRegistered(name, strategy);
+    }
+
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

@@ -7,11 +7,12 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+// import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
-contract StrategyGovernanceArbitrage is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuard {
+contract StrategyGovernanceArbitrage is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     address public registry;
@@ -25,8 +26,9 @@ contract StrategyGovernanceArbitrage is IStrategy, Initializable, UUPSUpgradeabl
     }
 
     function initialize(address _registry) external initializer {
-        require(_registry != address(0), "Invalid registry");
+        require(_registry != address(0), "Invalid registry");    
         __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();        
         __UUPSUpgradeable_init();
         registry = _registry;
         minProfitMargin = 1000; // 10%
