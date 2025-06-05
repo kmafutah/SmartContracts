@@ -77,6 +77,84 @@ The ZiG Token Ecosystem comprises a set of contracts defining a unique tokenomic
     npm install
     ```
     (or `yarn install` if using yarn)
+3. **.env**
+    ```env
+        PRIVATE_KEY=<your-wallets-private-key>
+        OWNER_ADDRESS=<address-of-the-contract-owner>
+        OPENEXG_APPID=<your-openexg-api-id>
+        INFURA_URL=<your-infura-mainnet-url>
+        AAVE_ADDRESS_PROVIDER=<aave-address-provider-contract-address>
+        CCIP_ROUTER_ADDRESS=<ccip-router-contract-address>
+        ETHERSCAN_API_KEY=<your-etherscan-api-key>
+        ANKR_API_KEY=<your-ankr-api-key>
+        TREASURY_ADDRESS=<treasury-contract-address>
+        INITIAL_SUPPLY=<initial-token-supply>
+        PAN_AFRICAN_TREASURY=<pan-african-treasury-contract-address>
+        DIASPORA_POOL=<diaspora-pool-contract-address>
+        RESTITUTION_FUND=<restitution-fund-contract-address>
+        MIN_REDIST_SHARE=<minimum-redistribution-share>
+        REPORT_GAS=<true-or-false-to-report-gas>
+
+        # Network specific router addresses (uncomment and use as needed)
+        # Ethereum Mainnet  0xE561d5E92207d96F14fA589e4f32B335d1E194f2
+        # Polygon   0x70499c328e1E2a3c41108bd3730F6670a44595D1
+        # Arbitrum  0xE561d5E92207d96F14fA589e4f32B335d1E194f2
+        # Optimism  0xE561d5E92207d96F14fA589e4f32B335d1E194f2
+        ROUTER_ADDRESS=<router-contract-address>
+
+        # RPC URLs and Chain IDs for various networks
+        CHAIN_ID=<skale-mainnet-chain-id>
+        SKALE_RPC_URL=<skale-mainnet-rpc-url>
+        SKALE_CHAIN_ID=<skale-mainnet-chain-id>
+        POLYGON_RPC_URL=<polygon-mainnet-rpc-url>
+        POLYGON_CHAIN_ID=<polygon-mainnet-chain-id>
+        OPTIMISM_RPC_URL=<optimism-mainnet-rpc-url>
+        OPTIMISM_CHAIN_ID=<optimism-mainnet-chain-id>
+        SKALE_TESTNET_RPC_URL=<skale-testnet-rpc-url>
+        SKALE_TESTNET_CHAIN_ID=<skale-testnet-chain-id>
+        POLYGON_TESTNET_RPC_URL=<polygon-testnet-rpc-url>
+        POLYGON_TESTNET_CHAIN_ID=<polygon-testnet-chain-id>
+        OPTIMISM_TESTNET_RPC_URL=<optimism-testnet-rpc-url>
+        OPTIMISM_TESTNET_CHAIN_ID=<optimism-testnet-chain-id>
+
+        # Strategy Admin and Owner Addresses
+        STRATEGY_ADMIN_ADDRESS=<strategy-admin-contract-address>
+        STRATEGY_OWNER_ADDRESS=<strategy-owner-contract-address>
+
+        # PMMS Deployment Addresses (example for skale_testnet, replace with actual deployed addresses)
+        REGISTRY_ADDRESS=<pmms-registry-contract-address>
+        STRATEGY_EXECUTOR_ADDRESS=<pmms-strategy-executor-contract-address>
+        FLASHLOAN_EXECUTOR_ADDRESS=<pmms-flashloan-executor-contract-address>
+        PMMS_ADDRESS=<pmms-main-contract-address>
+        CURVE_3POOL_ADDRESS=<curve-3pool-contract-address>
+        UNISWAP_V2_ADDRESS=<uniswap-v2-contract-address>
+        UNISWAP_V3_ADDRESS=<uniswap-v3-contract-address>
+        UNISWAP_V3_QUOTER_ADDRESS=<uniswap-v3-quoter-contract-address>
+        CONVEX_ADDRESS=<convex-contract-address>
+        CURVE_3POOL_TOKEN_ADDRESS=<curve-3pool-token-contract-address>
+        AAVE_LENDING_POOL_ADDRESS=<aave-lending-pool-contract-address>
+        SKALE_IMA_BRIDGE_ADDRESS=<skale-ima-bridge-contract-address>
+        GAS_ORACLE_ADDRESS=<gas-oracle-contract-address>
+        STRATEGYAAVELIQUIDATION_ADDRESS=<strategy-aave-liquidation-contract-address>
+        STRATEGYBRIDGINGLATENCYARBITRAGE_ADDRESS=<strategy-bridging-latency-arbitrage-contract-address>
+        STRATEGYCROSSDEXLENDINGARBITRAGE_ADDRESS=<strategy-crossdex-lending-arbitrage-contract-address>
+        STRATEGYDEXARBITRAGE_ADDRESS=<strategy-dex-arbitrage-contract-address>
+        STRATEGYFLASHLOANGASARBITRAGE_ADDRESS=<strategy-flashloan-gas-arbitrage-contract-address>
+        STRATEGYFLASHMINTARBITRAGE_ADDRESS=<strategy-flash-mint-arbitrage-contract-address>
+        STRATEGYGASREFUNDARBITRAGE_ADDRESS=<strategy-gas-refund-arbitrage-contract-address>
+        STRATEGYGOVERNANCEARBITRAGE_ADDRESS=<strategy-governance-arbitrage-contract-address>
+        STRATEGYLPBURNARBITRAGE_ADDRESS=<strategy-lp-burn-arbitrage-contract-address>
+        STRATEGYMEVCAPTURE_ADDRESS=<strategy-mev-capture-contract-address>
+        STRATEGYNFTCOLLATERALLIQUIDATION_ADDRESS=<strategy-nft-collateral-liquidation-contract-address>
+        STRATEGYNFTFLOORARBITRAGE_ADDRESS=<strategy-nft-floor-arbitrage-contract-address>
+        STRATEGYORACLELAGARBITRAGE_ADDRESS=<strategy-oracle-lag-arbitrage-contract-address>
+        STRATEGYREBASETOKENARBITRAGE_ADDRESS=<strategy-rebase-token-arbitrage-contract-address>
+        STRATEGYSTABLECOINMETAPROTOCOLARBITRAGE_ADDRESS=<strategy-stablecoin-metaprotocol-arbitrage-contract-address>
+        STRATEGYSTABLECOINPEGARBITRAGE_ADDRESS=<strategy-stablecoin-peg-arbitrage-contract-address>
+        STRATEGYSTAKINGTOKENARBITRAGE_ADDRESS=<strategy-staking-token-arbitrage-contract-address>
+        STRATEGYTRIANGULARARBITRAGE_ADDRESS=<strategy-triangular-arbitrage-contract-address>
+        STRATEGYYIELDLOOP_ADDRESS=<strategy-yield-loop-contract-address>
+    ```
 
 ### Compilation
 
@@ -96,7 +174,9 @@ forge test
 
 Deployment instructions will vary based on your target network and specific deployment setup. Typically, you would use Foundry scripts for deployment:
 ```bash
-forge script script/Deploy.s.sol --rpc-url <YOUR_RPC_URL> --private-key <YOUR_PRIVATE_KEY> --broadcast
+npx hardhat run scripts/deploy_zig.js --network skale_testnet
+npx hardhat run scripts/deployPMMS.js --network skale_testnet
+
 ```
 
 ### Usage
