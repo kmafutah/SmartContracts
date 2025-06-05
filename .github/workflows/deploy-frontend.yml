@@ -1,0 +1,30 @@
+name: Deploy Frontend to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main # Or your main development branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Or your preferred Node.js version
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json # <--- Optimize cache path
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: ./frontend # <--- Add this line
+
+      - name: Deploy to GitHub Pages
+        run: npm run deploy
+        working-directory: ./frontend # <--- Add this line
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,46 @@
+name: Foundry CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: latest
+
+      - name: Install Node.js dependencies (for .env or other JS tooling if any)
+        run: npm install
+
+      - name: Install Foundry dependencies
+        run: forge install
+
+      - name: Build contracts
+        run: forge build
+
+      - name: Run tests
+        run: forge test
+
+      # You can add a deployment step here for testnets after successful build and test
+      # - name: Deploy to Testnet (Optional)
+      #   if: github.ref == 'refs/heads/main' # Only deploy from main branch
+      #   run: |
+      #     forge script script/Deploy.s.sol --rpc-url ${{ secrets.RPC_URL_TESTNET }} --private-key ${{ secrets.DEPLOYER_PRIVATE_KEY }} --broadcast
+      #   env:
+      #     PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+      #     # Add other .env variables here as secrets
+      #     # AAVE_ADDRESS_PROVIDER: ${{ secrets.AAVE_ADDRESS_PROVIDER }}
+      #     # ...

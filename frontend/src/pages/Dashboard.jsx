@@ -18,8 +18,6 @@ const Dashboard = () => {
         </header>
         <section className="grid grid-cols-1 md:grid-cols-1 gap-6">
           <AutoExecutor />
-          <StrategyList />
-          <ContractInteractor />
         </section>
       </div>
     </div>
