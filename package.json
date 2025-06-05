@@ -1,0 +1,56 @@
+{
+  "name": "blockchaincontracts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy:localhost": "hardhat run scripts/deployAll.js --network localhost",
+    "deploy:skale": "hardhat run scripts/deployAll.js --network skale",
+    "deploy:skale-testnet": "hardhat run scripts/deployAll.js --network skale_testnet",
+    "deploy:pmms:skale": "hardhat run scripts/deploy-pmms.js --network skale",
+    "deploy:pmms:skale_testnet": "hardhat run scripts/deploy-pmms.js --network skale_testnet",
+    "deploy:pmms:polygon": "hardhat run scripts/deploy-pmms.js --network polygon",
+    "verify:pmms": "hardhat verify --constructor-args scripts/args.js",
+    "execute:arbitrage:localhost": "hardhat run scripts/executeArbitrage.js --network localhost",
+    "execute:arbitrage:skale": "hardhat run scripts/executeArbitrage.js --network skale",
+    "fund:localhost": "hardhat run scripts/fundDeployer.js --network localhost",
+    "verify:skale": "hardhat verify --network skale",
+    "verify:skale-testnet": "hardhat verify --network skale_testnet",
+    "test": "hardhat test"
+  },
+  "keywords": [
+    "Stablecoin",
+    "Token",
+    "ZiGT"
+  ],
+  "author": "Kudakwashe Mafutah",
+  "license": "UNLICENSED",
+  "description": "",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.14",
+    "@openzeppelin/contracts": "^5.0.0",
+    "dotenv": "^16.5.0",
+    "ethers": "^6.14.3",
+    "hardhat": "^2.24.1"
+  },
+  "dependencies": {
+    "@aave/core-v3": "^1.19.3",
+    "@chainlink/contracts": "^1.2.0",
+    "@chainlink/contracts-ccip": "^1.5.0",
+    "@openzeppelin/contracts-upgradeable": "^5.3.0",
+    "@openzeppelin/hardhat-upgrades": "^3.9.0",
+    "@prb/math": "^4.1.0",
+    "@uniswap/v2-core": "^1.0.1",
+    "@uniswap/v2-periphery": "^1.1.0-beta.0",
+    "@uniswap/v3-core": "^1.0.1",
+    "@uniswap/v3-periphery": "^1.4.4",
+    "@uniswap/v4-core": "^1.0.2",
+    "@uniswap/v4-periphery": "^1.0.2",
+    "bandprotocol-contracts": "github:bandprotocol/contracts"
+  },
+  "resolutions": {
+    "ethers": "^6.14.3"
+  }
+}

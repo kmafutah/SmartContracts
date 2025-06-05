@@ -1,0 +1,3863 @@
+---Path and files name: pmms/mocks/MockFlashloanExecutor.sol
+---Filename: MockFlashloanExecutor.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+
+contract MockFlashloanExecutor is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    ISwapRouter public swapRouter;
+
+    // Event to track strategy execution
+    event StrategyExecuted(
+        address indexed asset,
+        uint256 amount,
+        bytes params,
+        bool success
+    );
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _swapRouter, address _owner) public initializer {
+        require(_swapRouter != address(0) && _owner != address(0), "Invalid addresses");
+        __Ownable_init(_owner);
+        __UUPSUpgradeable_init();
+
+        swapRouter = ISwapRouter(_swapRouter);
+    }
+
+    function executeStrategy(address asset, uint256 amount, bytes calldata params) external {
+        require(msg.sender == owner(), "Only owner can execute");
+        require(asset != address(0), "Invalid asset");
+        require(amount > 0, "Amount must be greater than 0");
+
+        (address targetAsset) = abi.decode(params, (address));
+        require(targetAsset != address(0), "Invalid target asset");
+
+        // Simulate strategy
+        uint256 mockProfit = amount / 100;
+        emit StrategyExecuted(asset, amount, params, true);
+    }
+
+    function repayLoan(address asset, uint256 amount) external {
+        emit StrategyExecuted(asset, amount, bytes("Loan repaid"), true);
+    }
+
+    // Optional dummy call
+    function updateSwapRouter(address newRouter) external onlyOwner {
+        emit StrategyExecuted(address(0), 0, bytes("Router updated"), true);
+    }
+
+    // Required by UUPSUpgradeable
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+}
+---File Content End---
+
+---Path and files name: pmms/mocks/MockPool.sol
+---Filename: MockPool.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@aave/core-v3/contracts/flashloan/interfaces/IFlashLoanSimpleReceiver.sol";
+
+contract MockPool {
+    function flashLoanSimple(
+        address receiverAddress,
+        address asset,
+        uint256 amount,
+        bytes calldata params,
+        uint16 /* referralCode */
+    ) external {
+        IERC20 token = IERC20(asset);
+        token.transfer(receiverAddress, amount); // Simulate loan
+        require(
+            IFlashLoanSimpleReceiver(receiverAddress).executeOperation(
+                asset,
+                amount,
+                0,
+                msg.sender,
+                params
+            ),
+            "Flash loan execution failed"
+        );
+        token.transferFrom(receiverAddress, address(this), amount); // Simulate repayment
+    }
+
+    // Other Aave pool methods are NOT needed unless explicitly called
+}
+---File Content End---
+
+---Path and files name: pmms/mocks/MockCurve3Pool.sol
+---Filename: MockCurve3Pool.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "../interfaces/IRegistry.sol";
+
+contract MockCurve3Pool {
+    function get_dy(int128 i, int128 j, uint256 dx) external view returns (uint256 dy) {
+        return dx * 997 / 1000; // Simulate 0.3% fee
+    }
+
+    function exchange(int128 i, int128 j, uint256 dx, uint256 min_dy) external returns (uint256) {
+        uint256 dy = dx * 997 / 1000;
+        require(dy >= min_dy, "Insufficient output");
+        address tokenIn = i == 1 ? IRegistry(msg.sender).getAddress("USDC") : IRegistry(msg.sender).getAddress("USDT");
+        address tokenOut = j == 1 ? IRegistry(msg.sender).getAddress("USDC") : IRegistry(msg.sender).getAddress("USDT");
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), dx);
+        IERC20(tokenOut).transfer(msg.sender, dy);
+        return dy;
+    }
+}---File Content End---
+
+---Path and files name: pmms/mocks/MockUSDC.sol
+---Filename: MockUSDC.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract MockUSDC is ERC20 {
+    constructor() ERC20("Mock USDC", "USDC") {
+        _mint(msg.sender, 1_000_000 * 10**18);
+    }
+}---File Content End---
+
+---Path and files name: pmms/mocks/MockUSDT.sol
+---Filename: MockUSDT.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract MockUSDT is ERC20 {
+    constructor() ERC20("Mock USDT", "USDT") {
+        _mint(msg.sender, 1_000_000 * 10**18);
+    }
+}---File Content End---
+
+---Path and files name: pmms/mocks/MockRegistry.sol
+---Filename: MockRegistry.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract MockRegistry {
+    mapping(string => address) private addresses;
+    mapping(string => address) private strategies;
+    address public nftFloorOracle;
+
+    function getAddress(string memory key) external view returns (address) {
+        return addresses[key]; // Returns address(0) if unset
+    }
+
+    function setAddress(string memory key, address value) external {
+        require(value != address(0), "Invalid address");
+        addresses[key] = value;
+    }
+
+    function getStrategy(string memory name) external view returns (address) {
+        return strategies[name];
+    }
+
+    function registerStrategy(string memory name, address strategyAddress) external {
+        strategies[name] = strategyAddress;
+    }
+
+    function deregisterStrategy(string memory name) external {
+        strategies[name] = address(0);
+    }
+
+    function setNftFloorOracle(address oracle) external {
+        nftFloorOracle = oracle;
+    }
+}---File Content End---
+
+---Path and files name: pmms/mocks/MockUniswapV2Router.sol
+---Filename: MockUniswapV2Router.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract MockUniswapV2Router {
+    function getAmountsOut(uint amountIn, address[] memory path) external view returns (uint[] memory amounts) {
+        amounts = new uint[](2);
+        amounts[0] = amountIn;
+        amounts[1] = amountIn * 995 / 1000; // Simulate 0.5% slippage
+        return amounts;
+    }
+
+    function swapExactTokensForTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external returns (uint[] memory amounts) {
+        require(block.timestamp <= deadline, "Expired");
+        amounts = new uint[](2);
+        amounts[0] = amountIn;
+        amounts[1] = amountIn * 995 / 1000;
+        require(amounts[1] >= amountOutMin, "Insufficient output");
+        IERC20(path[0]).transferFrom(msg.sender, address(this), amountIn);
+        IERC20(path[1]).transfer(to, amounts[1]);
+        return amounts;
+    }
+}---File Content End---
+
+---Path and files name: pmms/mocks/MockPoolAddressesProvider.sol
+---Filename: MockPoolAddressesProvider.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract MockPoolAddressesProvider {
+    address public pool;
+
+    constructor(address _pool) {
+        pool = _pool;
+    }
+
+    function getPool() external view returns (address) {
+        return pool;
+    }
+}
+---File Content End---
+
+---Path and files name: pmms/mocks/MockUniswapV3Router.sol
+---Filename: MockUniswapV3Router.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract MockUniswapV3Router {
+    // Mock swap event
+    event Swap(
+        address indexed tokenIn,
+        address indexed tokenOut,
+        uint256 amountIn,
+        uint256 amountOut
+    );
+
+    // Mock exactInputSingle function
+    function exactInputSingle(
+        address tokenIn,
+        address tokenOut,
+        uint24 fee,
+        address recipient,
+        uint256 deadline,
+        uint256 amountIn,
+        uint256 amountOutMinimum,
+        uint160 sqrtPriceLimitX96
+    ) external returns (uint256 amountOut) {
+        require(block.timestamp <= deadline, "Transaction expired");
+        require(amountIn > 0, "Invalid amount");
+        // Simulate a 1:1 swap with 0.3% fee
+        amountOut = (amountIn * 997) / 1000;
+        emit Swap(tokenIn, tokenOut, amountIn, amountOut);
+        return amountOut;
+    }
+}---File Content End---
+
+---Path and files name: pmms/FlashloanExecutor.sol
+---Filename: FlashloanExecutor.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "./interfaces/IStrategy.sol";
+import "./interfaces/IRegistry.sol";
+import "@aave/core-v3/contracts/flashloan/base/FlashLoanSimpleReceiverBase.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract FlashloanExecutor is FlashLoanSimpleReceiverBase, Ownable {
+    IRegistry public immutable registry;
+    address public strategyExecutor;
+
+    event FlashloanExecuted(address indexed asset, uint256 amount, uint256 premium, bool success);
+
+    constructor(
+        IPoolAddressesProvider provider,
+        address _registry,
+        address _strategyExecutor,
+        address _owner
+    ) FlashLoanSimpleReceiverBase(provider) Ownable(_owner) {
+        require(_registry != address(0) && _strategyExecutor != address(0), "Invalid addresses");
+        registry = IRegistry(_registry);
+        strategyExecutor = _strategyExecutor;
+    }
+
+    function executeStrategy(
+        address asset,
+        uint256 amount,
+        bytes calldata params
+    ) external onlyOwner {
+        POOL.flashLoanSimple(
+            address(this),
+            asset,
+            amount,
+            params,
+            0
+        );
+    }
+
+    function executeOperation(
+        address asset,
+        uint256 amount,
+        uint256 premium,
+        address initiator,
+        bytes calldata params
+    ) external override returns (bool) {
+        require(msg.sender == address(POOL), "Unauthorized");
+        require(initiator == address(this), "Invalid initiator");
+
+        // Find and execute best strategy
+        (bool success, bytes memory result) = strategyExecutor.call(
+            abi.encodeWithSignature(
+                "findAndExecute(address,uint256,uint256)",
+                asset,
+                amount,
+                premium
+            )
+        );
+
+        // Approve repayment
+        uint256 totalAmount = amount + premium;
+        IERC20(asset).approve(address(POOL), totalAmount);
+
+        emit FlashloanExecuted(asset, amount, premium, success);
+        return success;
+    }
+
+    function updateStrategyExecutor(address newExecutor) external onlyOwner {
+        require(newExecutor != address(0), "Invalid executor address");
+        strategyExecutor = newExecutor;
+    }
+}---File Content End---
+
+---Path and files name: pmms/ProfitMaximizerModularSystem.sol
+---Filename: ProfitMaximizerModularSystem.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "./core/Registry.sol";
+import "./core/FlashloanExecutor.sol";
+import "./interfaces/IStrategy.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+contract ProfitMaximizerModularSystem is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    Registry public registry;
+    FlashloanExecutor public flashloanExecutor;
+
+    event StrategyExecuted(string indexed name, address indexed strategy, bool success);
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _registry, address _flashloanExecutor, address _owner) external initializer {
+        require(_registry != address(0) && _flashloanExecutor != address(0), "Invalid addresses");
+
+        __Ownable_init(_owner);
+        __UUPSUpgradeable_init();
+
+        registry = Registry(_registry);
+        flashloanExecutor = FlashloanExecutor(_flashloanExecutor);
+    }
+
+    function executeStrategy(
+        string calldata name,
+        address asset,
+        uint256 amount,
+        bytes calldata params
+    ) external onlyOwner {
+        address strategyAddress = registry.getStrategy(name);
+        require(strategyAddress != address(0), "Strategy not found");
+
+        flashloanExecutor.initiateFlashLoan(asset, amount, params);
+
+        emit StrategyExecuted(name, strategyAddress, true);
+    }
+
+    function addStrategy(string calldata name, address strategyAddress) external onlyOwner {
+        registry.registerStrategy(name, strategyAddress);
+    }
+
+    function removeStrategy(string calldata name) external onlyOwner {
+        registry.deregisterStrategy(name);
+    }
+
+    function updateFlashloanExecutor(address newExecutor) external onlyOwner {
+        require(newExecutor != address(0), "Invalid executor address");
+        flashloanExecutor = FlashloanExecutor(newExecutor);
+    }
+
+    function setRegistryAddress(string calldata key, address value) external onlyOwner {
+        registry.setAddress(key, value);
+    }
+
+    function setNftFloorOracle(address oracle) external onlyOwner {
+        registry.setNftFloorOracle(oracle);
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+}
+---File Content End---
+
+---Path and files name: pmms/core/FlashloanExecutor.sol
+---Filename: FlashloanExecutor.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IStrategy.sol";
+import "../interfaces/IRegistry.sol";
+import "@aave/core-v3/contracts/interfaces/IPoolAddressesProvider.sol";
+import "@aave/core-v3/contracts/interfaces/IPool.sol";
+import "./StrategyExecutor.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+
+contract FlashloanExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+    StrategyExecutor public executor;
+    IPoolAddressesProvider public addressProvider;
+    IPool public pool;
+    
+    event FlashLoanInitiated(address indexed asset, uint256 amount);
+    event StrategyExecuted(address indexed asset, uint256 amount, uint256 premium, bool success);
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        IPoolAddressesProvider _addressProvider,
+        address _initialOwner,
+        address _strategyExecutor
+    ) public initializer {
+        __Ownable_init(_initialOwner);
+        __UUPSUpgradeable_init();
+        
+        require(_strategyExecutor != address(0), "Invalid executor address");
+        addressProvider = _addressProvider;
+        pool = IPool(_addressProvider.getPool());
+        executor = StrategyExecutor(_strategyExecutor);
+    }
+
+    function initiateFlashLoan(
+        address asset, 
+        uint256 amount,
+        bytes calldata executionParams
+    ) external onlyOwner {
+        require(amount > 0, "Invalid amount");
+        bytes memory data = abi.encode(executionParams);
+        pool.flashLoanSimple(address(this), asset, amount, data, 0);
+        emit FlashLoanInitiated(asset, amount);
+    }
+
+
+    function executeOperation(
+        address asset,
+        uint256 amount,
+        uint256 premium,
+        address, // initiator
+        bytes calldata params
+    ) external returns (bool) {
+        require(msg.sender == address(pool), "Only Aave POOL");
+        
+        (bool success, ) = address(executor).call(
+            abi.encodeWithSignature(
+                "findAndExecute(address,uint256,uint256,bytes)",
+                asset,
+                amount,
+                premium,
+                params
+            )
+        );
+
+        require(success, "Strategy execution failed");
+        
+        uint256 totalOwed = amount + premium;
+        ERC20Upgradeable(asset).approve(address(pool), totalOwed);
+
+        emit StrategyExecuted(asset, amount, premium, success);
+        return true;
+    }
+
+    function updateExecutor(address newExecutor) external onlyOwner {
+        require(newExecutor != address(0), "Invalid address");
+        executor = StrategyExecutor(newExecutor);
+    }
+
+    function updatePoolAddressesProvider(IPoolAddressesProvider newProvider) external onlyOwner {
+        require(address(newProvider) != address(0), "Invalid provider");
+        addressProvider = newProvider;
+        pool = IPool(newProvider.getPool());
+    }
+
+    // SKALE-compatible token receiver
+    function receiveTokens(address token, uint256 amount) external {
+        ERC20Upgradeable(token).transferFrom(msg.sender, address(this), amount);
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+}---File Content End---
+
+---Path and files name: pmms/core/DeFiStrategies.sol
+---Filename: DeFiStrategies.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+contract DeFiStrategies {
+        struct Strategy {
+            uint256 id;
+            string name;
+            string description;
+            string risk;
+            string notes;
+        }
+
+        Strategy[] public strategies;
+
+        constructor() {
+            strategies.push(Strategy(1, "DEX Arbitrage", "Profit from token price discrepancies between decentralised exchanges", "Low", "Most basic, usually requires speed and liquidity"));
+            strategies.push(Strategy(2, "Aave Liquidation", "Repay undercollateralised debt and receive a discounted asset", "Medium", "Requires accurate health factor monitoring; timing-sensitive"));
+            strategies.push(Strategy(3, "Yield Loop (Leverage Farming)", "Deposit asset", " borrow against it", " redeposit etc., earning net yield,Medium,Profitable if APY > borrow rate; chain-specific opportunities"));
+            strategies.push(Strategy(4, "Stablecoin Peg Arbitrage", "Arbitrage when stables (e.g. USDT/USDC/DAI) depeg on one DEX", "Low", "Very effective during market stress"));
+            strategies.push(Strategy(5, "NFT Floor Arbitrage", "Buy NFT below floor price on one market", " sell higher on another", "Medium,Depends on floor oracle and timing"));
+            strategies.push(Strategy(6, "Triangular Arbitrage", "e.g.", "ETH -> USDC -> DAI -> ETH", "Medium,Use Uniswap/Sushi/Balancer; works when paths are mispriced"));
+            strategies.push(Strategy(7, "Cross-DEX Lending Arbitrage", "Borrow from one (low borrow rate)", " lend on another (high supply rate)", "High,Use Aave -> Compound / Morpho / Euler"));
+            strategies.push(Strategy(8, "Governance Arbitrage", "Acquire tokens cheaply before snapshot", " vote or benefit", " dump after,High,Timing-critical; mostly DAO-reward based"));
+            strategies.push(Strategy(9, "Oracle Lag Arbitrage", "When AMM price deviates before Chainlink updates", "Low", "Works especially on smaller tokens"));
+            strategies.push(Strategy(10, "Stablecoin Meta-Protocol Arbitrage", "Curve pools (3Pool", " FraxBP)", " Meta Pools (Convex/Curve vaults),High,Requires deep Curve/Convex integration"));
+            strategies.push(Strategy(11, "Flash-Mint Arbitrage", "Use protocols like FPI", " AMPL", " or tokens with built-in mint/redeem,High,Limited to tokens supporting flash mint"));
+            strategies.push(Strategy(12, "LP Burn & Arbitrage", "Burn LP tokens to withdraw high value tokens (post-impermanent loss)", "Medium", "Time-sensitive post-shock"));
+            strategies.push(Strategy(13, "MEV Capture (own mempool node)", "Detect pending tx and front-run for profit", "Very High", "Flashbots, RPC control"));
+            strategies.push(Strategy(14, "Rebase Token Arbitrage", "e.g. AMPL or OHM forks before and after rebases", "Medium", "Oracle + Timing"));
+            strategies.push(Strategy(15, "Bridging Latency Arbitrage", "Cross-chain token pricing (e.g.", " ETH price on Arbitrum vs ETH Mainnet)", "High,LayerZero, Wormhole"));
+            strategies.push(Strategy(16, "NFT Collateral Liquidation", "Instant buyout of undercollateralised NFTs on platforms like BendDAO", "Medium", "NFT Pricing Oracle"));
+            strategies.push(Strategy(17, "Liquid Staking Token Arbitrage", "Arbitrage between LSTs like stETH", " rETH", " cbETH,Medium,Market-dependent"));
+            strategies.push(Strategy(18, "Flashloan Gas Arbitrage", "Arbitrage where users overpay for gas", " refund or resell via bundlers", "High,Requires bundler and custom RPC"));
+        }
+    }---File Content End---
+
+---Path and files name: pmms/core/StrategyIds.sol
+---Filename: StrategyIds.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+library StrategyIds {
+    uint256 constant DEX_ARBITRAGE = 1;
+    uint256 constant AAVE_LIQUIDATION = 2;
+    uint256 constant YIELD_LOOP = 3;
+    uint256 constant STABLECOIN_PEG_ARBITRAGE = 4;
+    uint256 constant NFT_FLOOR_ARBITRAGE = 5;
+    uint256 constant TRIANGULAR_ARBITRAGE = 6;
+    uint256 constant CROSS_DEX_LENDING_ARBITRAGE = 7;
+    uint256 constant GOVERNANCE_ARBITRAGE = 8;
+    uint256 constant ORACLE_LAG_ARBITRAGE = 9;
+    uint256 constant STABLECOIN_META_PROTOCOL_ARBITRAGE = 10;
+    uint256 constant FLASH_MINT_ARBITRAGE = 11;
+    uint256 constant LP_BURN_ARBITRAGE = 12;
+    uint256 constant MEV_CAPTURE = 13;
+    uint256 constant REBASE_TOKEN_ARBITRAGE = 14;
+    uint256 constant BRIDGING_LATENCY_ARBITRAGE = 15;
+    uint256 constant NFT_COLLATERAL_LIQUIDATION = 16;
+    uint256 constant LIQUID_STAKING_TOKEN_ARBITRAGE = 17;
+    uint256 constant FLASHLOAN_GAS_ARBITRAGE = 18;
+}
+---File Content End---
+
+---Path and files name: pmms/core/StrategyExecutor.sol
+---Filename: StrategyExecutor.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+
+contract StrategyExecutor is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    IRegistry public registry;
+    address public flashloanExecutor;
+
+    event StrategyExecuted(address indexed strategy, address indexed asset, uint256 profit);
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address _registry,
+        address _flashloanExecutor,
+        address _owner
+    ) public initializer {
+        __Ownable_init(_owner);
+        __UUPSUpgradeable_init();
+        
+        require(_registry != address(0) && _flashloanExecutor != address(0), "Invalid addresses");
+        registry = IRegistry(_registry);
+        flashloanExecutor = _flashloanExecutor;
+    }
+
+    function findAndExecute(
+        address asset,
+        uint256 amount,
+        uint256 premium,
+        bytes calldata params
+    ) external returns (bool success, bytes memory result) {
+        require(msg.sender == flashloanExecutor, "Unauthorized");
+
+        string[] memory strategyNames = registry.getStrategyNames();
+        uint256 bestProfit = 0;
+        address bestStrategy;
+        bytes memory bestExecutionData;
+
+        for (uint256 i = 0; i < strategyNames.length; i++) {
+            address strategyAddr = registry.getStrategy(strategyNames[i]);
+            if (strategyAddr == address(0)) continue;
+
+            (uint256 profit, bytes memory executionData) = IStrategy(strategyAddr).checkOpportunity(asset, amount);
+            
+            if (profit > bestProfit && profit > premium) {
+                bestProfit = profit;
+                bestStrategy = strategyAddr;
+                bestExecutionData = executionData;
+            }
+        }
+
+        if (bestStrategy != address(0)) {
+            (bool executed, bytes memory strategyResult, uint256 finalAmount) = 
+                IStrategy(bestStrategy).execute(bestExecutionData, amount, premium);
+            
+            if (executed && finalAmount > amount + premium) {
+                emit StrategyExecuted(bestStrategy, asset, finalAmount - amount - premium);
+                return (true, strategyResult);
+            }
+        }
+
+        return (false, "No profitable strategy found");
+    }
+
+    function updateFlashloanExecutor(address newExecutor) external onlyOwner {
+        require(newExecutor != address(0), "Invalid address");
+        flashloanExecutor = newExecutor;
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+}---File Content End---
+
+---Path and files name: pmms/core/Registry.sol
+---Filename: Registry.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/INftFloorOracle.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+contract Registry is Initializable, IRegistry, OwnableUpgradeable, UUPSUpgradeable {
+    mapping(string => address) public strategies;
+    string[] private strategyNames;
+    mapping(string => address) private addresses;
+    address public nftFloorOracle;
+
+    event StrategyRegistered(string indexed name, address indexed strategy);
+    event StrategyDeregistered(string indexed name);
+    event AddressSet(string indexed key, address indexed value);
+    event NftFloorOracleUpdated(address indexed oracle);
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address initialOwner) public initializer {
+        __Ownable_init(initialOwner);
+        __UUPSUpgradeable_init();
+    }
+
+    function registerStrategy(string calldata name, address strategy) external override onlyOwner {
+        require(strategies[name] == address(0), "Strategy already registered");
+        require(strategy != address(0), "Invalid strategy address");
+        strategies[name] = strategy;
+        strategyNames.push(name);
+        emit StrategyRegistered(name, strategy);
+    }
+
+    function deregisterStrategy(string calldata name) external override onlyOwner {
+        require(strategies[name] != address(0), "Strategy not found");
+        delete strategies[name];
+        emit StrategyDeregistered(name);
+    }
+
+    function getStrategy(string calldata name) external view override returns (address) {
+        return strategies[name];
+    }
+
+    function getStrategies() external view override returns (address[] memory) {
+        address[] memory strategyAddresses = new address[](strategyNames.length);
+        for (uint i = 0; i < strategyNames.length; i++) {
+            strategyAddresses[i] = strategies[strategyNames[i]];
+        }
+        return strategyAddresses;
+    }
+
+    function getStrategyNames() external view returns (string[] memory) {
+        return strategyNames;
+    }
+
+    function setAddress(string memory key, address value) external onlyOwner {
+        require(value != address(0), "Invalid address");
+        addresses[key] = value;
+        emit AddressSet(key, value);
+    }
+
+    function getAddress(string memory key) external view override returns (address) {
+        return addresses[key];
+    }
+
+    function setNftFloorOracle(address oracle) external onlyOwner {
+        require(oracle != address(0), "Invalid oracle address");
+        nftFloorOracle = oracle;
+        emit NftFloorOracleUpdated(oracle);
+    }
+
+    function getNftFloorPrice(address nftContract) external view override returns (uint256) {
+        require(nftFloorOracle != address(0), "NFT floor oracle not set");
+        return INftFloorOracle(nftFloorOracle).getFloorPrice(nftContract);
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+}---File Content End---
+
+---Path and files name: pmms/core/StrategyRegistry.sol
+---Filename: StrategyRegistry.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+contract StrategyRegistry {
+    mapping(string => address) public strategies;
+    string[] private strategyNames;
+
+    event StrategyRegistered(string indexed name, address indexed strategy);
+
+    function registerStrategy(string calldata name, address strategy) external {
+        require(strategies[name] == address(0), "Strategy already registered");
+        strategies[name] = strategy;
+        strategyNames.push(name);
+        emit StrategyRegistered(name, strategy);
+    }
+
+    function getStrategy(string calldata name) external view returns (address) {
+        return strategies[name];
+    }
+
+    function getStrategyNames() external view returns (string[] memory) {
+        return strategyNames;
+    }
+}
+---File Content End---
+
+---Path and files name: pmms/strategies/StrategyYieldLoop.sol
+---Filename: StrategyYieldLoop.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+// import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol"; // Not needed for Aave Yield Loop
+import "../interfaces/IStrategy.sol";
+import "../interfaces/IRegistry.sol";
+
+interface IAaveLendingPool {
+    function deposit(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external;
+    function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf) external;
+    function repay(address asset, uint256 amount, uint256 rateMode, address onBehalfOf) external returns (uint256);
+    // Add other Aave functions as needed (e.g., withdraw, getUserAccountData)
+}
+
+contract StrategyYieldLoop is IStrategy, ReentrancyGuard {
+    IRegistry public registry; // Use IRegistry
+
+    constructor(address _registry) {
+        require(_registry != address(0), "Invalid registry address");
+        registry = IRegistry(_registry);
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Yield Loop (Leverage Farming)"; // Corrected name
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        // TODO: Implement actual logic to compare APYs across protocols (e.g., Aave, Compound, Morpho).
+        // This would involve:
+        // 1. Getting current supply APY for `asset` on Protocol A.
+        // 2. Getting current borrow APY for `borrowAsset` on Protocol A.
+        // 3. Calculating the net yield for a loop.
+        // 4. Potentially comparing this with other protocols or a predefined profit threshold.
+        // For now, return a placeholder profit for compilation.
+        if (asset == address(0) || amount == 0) {
+            return (0, "");
+        }
+        // Mock a small profit for demonstration if asset is not zero.
+        if (amount > 1000) { // arbitrary threshold for a "profitable" amount
+            profit = amount / 20; // Example: 5% profit
+            // Example execution data: deposit asset, borrow asset (could be the same or different)
+            executionData = abi.encode(asset, registry.getAddress("USDC")); // Mock: deposit asset, borrow USDC
+        } else {
+            profit = 0;
+            executionData = "";
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256 finalAmount)
+    {
+        (address depositAsset, address borrowAsset) = abi.decode(executionData, (address, address));
+        address lendingPoolAddress = registry.getAddress("AAVE_LENDING_POOL");
+        require(lendingPoolAddress != address(0), "Aave Lending Pool not set in Registry");
+        IAaveLendingPool lendingPool = IAaveLendingPool(lendingPoolAddress);
+
+        // TODO: Implement the actual yield looping mechanism:
+        // 1. Approve lendingPool to spend `depositAsset`.
+        IERC20(depositAsset).approve(lendingPoolAddress, amount);
+
+        // 2. Deposit `amount` of `depositAsset` into Aave.
+        lendingPool.deposit(depositAsset, amount, address(this), 0); // Self-deposit
+
+        // 3. Borrow `borrowAsset` against the deposited collateral.
+        //    You'll need to calculate how much can be safely borrowed.
+        uint256 borrowedAmount = amount / 2; // Example: borrow 50% of deposited value
+        IERC20(borrowAsset).approve(lendingPoolAddress, borrowedAmount); // Approve to repay if needed
+        lendingPool.borrow(borrowAsset, borrowedAmount, 2, 0, address(this)); // 2 for variable rate
+
+        // 4. (Optional) Swap borrowedAsset back to depositAsset if cross-asset looping.
+        // 5. Redeposit the newly acquired depositAsset, closing the loop.
+        // Repeat steps 2-5 for multiple loops if desired, but be careful with reentrancy and gas.
+
+        // For simplicity, let's assume a direct profit calculation for compilation.
+        // In a real scenario, you'd calculate actual net yield from the loop.
+        uint256 calculatedProfit = (amount / 10) - premium; // Mock profit (10% gross, minus premium)
+        if (calculatedProfit < 0) calculatedProfit = 0;
+
+        // Ensure enough funds are available to repay flashloan + premium (if this was a flashloan strategy)
+        // The main FlashloanExecutor handles the final approval and repayment to the POOL.
+        // This strategy needs to ensure that the initial 'amount' + 'premium' is available
+        // in the FlashloanExecutor contract by the end of its execution.
+
+        // Simplified return for compilation
+        return (true, abi.encodePacked("Yield loop successful"), calculatedProfit);
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyStablecoinMetaProtocolArbitrage.sol
+---Filename: StrategyStablecoinMetaProtocolArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "../interfaces/ICurvePool.sol";
+import "../interfaces/IConvexBooster.sol";
+import "../interfaces/ISwapRouter.sol"; // For potential Uniswap V3
+import "../interfaces/IQuoter.sol";     // For Uniswap V3 price quoting
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // Explicitly import for SafeERC20 usage
+
+contract StrategyStablecoinMetaProtocolArbitrage is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    IRegistry public registry;
+    uint256 public constant SLIPPAGE_TOLERANCE = 50; // 0.5%
+    uint24 public constant UNISWAP_V3_FEE = 3000; // 0.3% fee tier (example)
+
+    constructor(address _registry) {
+        require(_registry != address(0), "Invalid registry address");
+        registry = IRegistry(_registry);
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Stablecoin Meta Protocol Arbitrage";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        // view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        // This is a simplified check. A real strategy would:
+        // 1. Get current prices/yields from Curve pools.
+        // 2. Get current yields/LP token value from Convex for corresponding pools.
+        // 3. Compare potential profits from swapping on Curve vs. depositing into Convex vaults
+        //    or arbitrage between the two.
+
+        address curvePool = registry.getAddress("CURVE_3POOL");
+        address convexBooster = registry.getAddress("CONVEX");
+        address usdc = registry.getAddress("USDC");
+        address usdt = registry.getAddress("USDT");
+        address uniswapRouter = registry.getAddress("UNISWAP_V3"); // Assuming V3 for general swaps
+        address quoter = registry.getAddress("UNISWAP_V3_QUOTER"); // Assuming Quoter address is also in registry
+
+        if (curvePool == address(0) || convexBooster == address(0) || usdc == address(0) || usdt == address(0) || uniswapRouter == address(0) || quoter == address(0)) {
+            return (0, ""); // Not all required addresses are set
+        }
+
+        // Example: Check direct swap on Uniswap V3 (e.g., USDC to USDT) vs. Curve
+        // This is purely for demonstration of how to use Quoter, not the full arbitrage logic.
+        uint256 expectedUsdtFromUniswap;
+        try IQuoter(quoter).quoteExactInputSingle(usdc, usdt, UNISWAP_V3_FEE, amount, 0) returns (uint256 amountOut) {
+            expectedUsdtFromUniswap = amountOut;
+        } catch {
+            expectedUsdtFromUniswap = 0; // Quoting failed
+        }
+
+        uint256 expectedUsdtFromCurve;
+        try ICurvePool(curvePool).get_dy(1, 2, amount) returns (uint256 amountOut) { // Assuming USDC is index 1, USDT is index 2
+            expectedUsdtFromCurve = amountOut;
+        } catch {
+            expectedUsdtFromCurve = 0; // Curve price check failed
+        }
+
+        // Simplified profit calculation: if Curve offers better price than Uniswap V3 (or vice-versa), consider it.
+        // A real strategy would factor in Convex yields and LP token dynamics.
+        if (expectedUsdtFromCurve > expectedUsdtFromUniswap && expectedUsdtFromCurve > amount) {
+            profit = expectedUsdtFromCurve - amount;
+            executionData = abi.encode(curvePool, usdc, usdt, expectedUsdtFromCurve, true); // true for Curve
+        } else if (expectedUsdtFromUniswap > expectedUsdtFromCurve && expectedUsdtFromUniswap > amount) {
+            profit = expectedUsdtFromUniswap - amount;
+            executionData = abi.encode(uniswapRouter, usdc, usdt, expectedUsdtFromUniswap, false); // false for Uniswap
+        } else {
+            profit = 0;
+            executionData = "";
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256)
+    {
+        (address protocolAddress, address tokenIn, address tokenOut, uint256 minOutExpected, bool isCurve) = abi.decode(executionData, (address, address, address, uint256, bool));
+        require(protocolAddress != address(0), "Invalid protocol address");
+        require(minOutExpected > 0, "No minimum output specified");
+
+        // Ensure sufficient tokenIn balance
+        require(IERC20(tokenIn).balanceOf(address(this)) >= amount, "Insufficient tokenIn balance");
+
+        uint256 finalAmountReceived = 0;
+
+        if (isCurve) {
+            address curvePool = protocolAddress;
+            address usdc = registry.getAddress("USDC");
+            address usdt = registry.getAddress("USDT");
+            address curve3PoolToken = registry.getAddress("CURVE_3POOL_TOKEN");
+
+            require(usdc == tokenIn && usdt == tokenOut, "Curve execution expects USDC to USDT");
+
+            // 1. Swap USDC to USDT on Curve
+            IERC20(usdc).approve(curvePool, amount);
+            uint256 minDy = (minOutExpected * (10000 - SLIPPAGE_TOLERANCE)) / 10000;
+            uint256 usdtReceived = ICurvePool(curvePool).exchange(1, 2, amount, minDy); // Assuming USDC (1) to USDT (2)
+            IERC20(usdc).approve(curvePool, 0); // Revoke approval
+
+            // 2. Add USDT to Curve 3pool to get LP tokens
+            IERC20(usdt).approve(curvePool, usdtReceived);
+            uint256[3] memory amounts = [uint256(0), uint256(0), usdtReceived]; // DAI, USDC, USDT
+            uint256 lpReceived = ICurvePool(curvePool).add_liquidity(amounts, 0);
+            IERC20(usdt).approve(curvePool, 0); // Revoke approval
+
+            // 3. Deposit LP tokens to Convex
+            address convex = registry.getAddress("CONVEX");
+            require(lpReceived > 0, "No LP tokens received");
+            require(convex != address(0), "Convex address not set in Registry");
+            IERC20(curve3PoolToken).approve(convex, lpReceived);
+            require(IConvexBooster(convex).deposit(0, lpReceived, true), "Convex deposit failed"); // Assuming poolid 0, stake = true
+            IERC20(curve3PoolToken).approve(convex, 0); // Revoke approval
+
+            finalAmountReceived = usdtReceived; // For profit calculation, consider the intermediate swap output
+        } else {
+            // Example: Execute on Uniswap V3 (if Uniswap was chosen as best path)
+            address uniswapRouter = protocolAddress;
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                fee: UNISWAP_V3_FEE, // Replace with dynamic fee or specific fee
+                recipient: address(this),
+                deadline: block.timestamp + 300,
+                amountIn: amount,
+                amountOutMinimum: (minOutExpected * (10000 - SLIPPAGE_TOLERANCE)) / 10000,
+                sqrtPriceLimitX96: 0
+            });
+
+            IERC20(tokenIn).approve(uniswapRouter, amount);
+            finalAmountReceived = ISwapRouter(uniswapRouter).exactInputSingle(params);
+            IERC20(tokenIn).approve(uniswapRouter, 0); // Revoke approval
+        }
+
+        uint256 profit = finalAmountReceived > amount + premium ? finalAmountReceived - amount - premium : 0;
+        require(profit > 0, "Insufficient profit after trade");
+
+        return (true, abi.encode(finalAmountReceived, profit), profit);
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyTriangularArbitrage.sol
+---Filename: StrategyTriangularArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "../interfaces/ISwapRouter.sol";
+import "../interfaces/IQuoter.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+
+contract StrategyTriangularArbitrage is IStrategy {
+    using SafeERC20 for IERC20;
+
+    IRegistry public immutable registry;
+    uint256 public constant SLIPPAGE_TOLERANCE = 50; // 0.5%
+    uint24 public constant POOL_FEE = 3000; // 0.3% fee tier
+    uint160 public constant SQRT_PRICE_LIMIT_X96 = 0;
+
+    constructor(address _registry) {
+        require(_registry != address(0), "Invalid registry address");
+        registry = IRegistry(_registry);
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Triangular Arbitrage";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        override  // REMOVED view modifier
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address uniswapRouter = registry.getAddress("UNISWAP_V3");
+        address quoter = registry.getAddress("UNISWAP_V3_QUOTER");
+        address usdc = registry.getAddress("USDC");
+        address dai = registry.getAddress("DAI");
+
+        if (uniswapRouter == address(0) || quoter == address(0) || usdc == address(0) || dai == address(0)) {
+            return (0, "");
+        }
+
+        // Triangular path: asset -> USDC -> DAI -> asset
+        address[] memory path = new address[](3);
+        path[0] = asset;
+        path[1] = usdc;
+        path[2] = dai;
+
+        uint256 amountOut;
+        
+        // Swap 1: asset -> USDC
+        amountOut = IQuoter(quoter).quoteExactInputSingle(
+            path[0],
+            path[1],
+            POOL_FEE,
+            amount,
+            SQRT_PRICE_LIMIT_X96
+        );
+
+        // Swap 2: USDC -> DAI
+        amountOut = IQuoter(quoter).quoteExactInputSingle(
+            path[1],
+            path[2],
+            POOL_FEE,
+            amountOut,
+            SQRT_PRICE_LIMIT_X96
+        );
+
+        // Swap 3: DAI -> asset
+        amountOut = IQuoter(quoter).quoteExactInputSingle(
+            path[2],
+            path[0],
+            POOL_FEE,
+            amountOut,
+            SQRT_PRICE_LIMIT_X96
+        );
+
+        if (amountOut > amount) {
+            profit = amountOut - amount;
+            executionData = abi.encode(path);
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        returns (bool success, bytes memory result, uint256 profit)
+    {
+        address uniswapRouter = registry.getAddress("UNISWAP_V3");
+        require(uniswapRouter != address(0), "Uniswap router not set");
+
+        address[] memory path = abi.decode(executionData, (address[]));
+        require(path.length == 3, "Invalid path length");
+
+        IERC20 tokenIn = IERC20(path[0]);
+        tokenIn.forceApprove(uniswapRouter, amount);
+
+        uint256 amountOutMinimum = amount * (10000 - SLIPPAGE_TOLERANCE) / 10000;
+
+        // Execute swap 1: path[0] -> path[1]
+        uint256 amountOut1 = ISwapRouter(uniswapRouter).exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: path[0],
+                tokenOut: path[1],
+                fee: POOL_FEE,
+                recipient: address(this),
+                deadline: block.timestamp + 300,
+                amountIn: amount,
+                amountOutMinimum: amountOutMinimum,
+                sqrtPriceLimitX96: SQRT_PRICE_LIMIT_X96
+            })
+        );
+
+        // Execute swap 2: path[1] -> path[2]
+        uint256 amountOut2 = ISwapRouter(uniswapRouter).exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: path[1],
+                tokenOut: path[2],
+                fee: POOL_FEE,
+                recipient: address(this),
+                deadline: block.timestamp + 300,
+                amountIn: amountOut1,
+                amountOutMinimum: amountOut1 * (10000 - SLIPPAGE_TOLERANCE) / 10000,
+                sqrtPriceLimitX96: SQRT_PRICE_LIMIT_X96
+            })
+        );
+
+        // Execute swap 3: path[2] -> path[0]
+        uint256 finalAmount = ISwapRouter(uniswapRouter).exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: path[2],
+                tokenOut: path[0],
+                fee: POOL_FEE,
+                recipient: address(this),
+                deadline: block.timestamp + 300,
+                amountIn: amountOut2,
+                amountOutMinimum: amountOut2 * (10000 - SLIPPAGE_TOLERANCE) / 10000,
+                sqrtPriceLimitX96: SQRT_PRICE_LIMIT_X96
+            })
+        );
+
+        profit = finalAmount > amount + premium ? finalAmount - amount - premium : 0;
+        require(profit > 0, "Insufficient profit");
+
+        return (true, abi.encode(finalAmount), profit);
+    }
+
+    function withdraw(address token, uint256 amount) external {
+        require(msg.sender == address(registry), "Only registry can withdraw");
+        IERC20(token).safeTransfer(msg.sender, amount);
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyStakingTokenArbitrage.sol
+---Filename: StrategyStakingTokenArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract StrategyStakingTokenArbitrage is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    IRegistry public immutable registry;
+    address public constant STETH = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
+    uint256 public constant SLIPPAGE_TOLERANCE = 50; // 0.5%
+    uint24 public constant POOL_FEE = 3000; // 0.3% fee tier
+    uint160 public constant SQRT_PRICE_LIMIT_X96 = 0;
+
+    event StakingTokenArbitrageExecuted(address indexed asset, uint256 profit, uint256 timestamp);
+
+    constructor(address _registry) {
+        require(_registry != address(0), "Invalid registry address");
+        registry = IRegistry(_registry);
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Staking Token Arbitrage";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        override // Removed view modifier
+        returns (uint256 profit, bytes memory executionData)
+    {
+        if (asset != STETH) return (0, "");
+
+        address uniswapRouter = registry.getAddress("UNISWAP_V3");
+        address weth = registry.getAddress("WETH");
+        address quoter = registry.getAddress("UNISWAP_V3_QUOTER");
+
+        if (uniswapRouter == address(0) || weth == address(0) || quoter == address(0)) {
+            return (0, "");
+        }
+
+        // Get quotes without try-catch since we're not in a view function anymore
+        uint256 stethToWeth = IQuoter(quoter).quoteExactInputSingle(
+            STETH,
+            weth,
+            POOL_FEE,
+            amount,
+            SQRT_PRICE_LIMIT_X96
+        );
+
+        uint256 wethToSteth = IQuoter(quoter).quoteExactInputSingle(
+            weth,
+            STETH,
+            POOL_FEE,
+            stethToWeth,
+            SQRT_PRICE_LIMIT_X96
+        );
+
+        if (wethToSteth > amount) {
+            profit = wethToSteth - amount;
+            executionData = abi.encode(weth);
+        } else {
+            profit = 0;
+            executionData = "";
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256 finalProfit)
+    {
+        address weth = abi.decode(executionData, (address));
+        require(weth == registry.getAddress("WETH"), "Invalid WETH address");
+        address uniswapRouter = registry.getAddress("UNISWAP_V3");
+        require(uniswapRouter != address(0), "Invalid Uniswap router");
+        require(IERC20(STETH).balanceOf(address(this)) >= amount, "Insufficient stETH balance");
+
+        // 1. Swap stETH -> WETH
+        IERC20(STETH).approve(uniswapRouter, amount);
+        uint256 minWethOut = amount * (10000 - SLIPPAGE_TOLERANCE) / 10000;
+        
+        uint256 wethOut = ISwapRouter(uniswapRouter).exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: STETH,
+                tokenOut: weth,
+                fee: POOL_FEE,
+                recipient: address(this),
+                deadline: block.timestamp + 300,
+                amountIn: amount,
+                amountOutMinimum: minWethOut,
+                sqrtPriceLimitX96: SQRT_PRICE_LIMIT_X96
+            })
+        );
+        IERC20(STETH).approve(uniswapRouter, 0);
+
+        // 2. Swap WETH -> stETH
+        require(IERC20(weth).balanceOf(address(this)) >= wethOut, "Insufficient WETH");
+        IERC20(weth).approve(uniswapRouter, wethOut);
+        uint256 minStethOut = amount * (10000 - SLIPPAGE_TOLERANCE) / 10000;
+        
+        uint256 finalStethAmount = ISwapRouter(uniswapRouter).exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: weth,
+                tokenOut: STETH,
+                fee: POOL_FEE,
+                recipient: address(this),
+                deadline: block.timestamp + 300,
+                amountIn: wethOut,
+                amountOutMinimum: minStethOut,
+                sqrtPriceLimitX96: SQRT_PRICE_LIMIT_X96
+            })
+        );
+        IERC20(weth).approve(uniswapRouter, 0);
+
+        // Calculate profit
+        finalProfit = finalStethAmount > amount + premium ? finalStethAmount - amount - premium : 0;
+        require(finalProfit > 0, "Insufficient profit");
+
+        emit StakingTokenArbitrageExecuted(STETH, finalProfit, block.timestamp);
+        return (true, abi.encode(finalProfit), finalProfit);
+    }
+
+    function withdraw(address token, uint256 amount) external {
+        require(msg.sender == address(registry), "Only registry can withdraw");
+        IERC20(token).safeTransfer(msg.sender, amount);
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyRebaseTokenArbitrage.sol
+---Filename: StrategyRebaseTokenArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IStrategy.sol";
+import "../interfaces/IRegistry.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
+
+interface IRebaseToken {
+    function totalSupply() external view returns (uint256);
+    function targetPrice() external view returns (uint256);
+    function rebase() external returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function symbol() external view returns (string memory);
+}
+
+contract StrategyRebaseTokenArbitrage is IStrategy, ReentrancyGuard, Ownable {
+    using SafeERC20 for IERC20;
+
+    IRegistry public immutable registry;
+    ISwapRouter public immutable uniswapRouter;
+    IQuoter public immutable quoter;
+    
+    uint256 public constant SLIPPAGE_TOLERANCE = 50;
+    uint256 public constant MIN_PROFIT_MARGIN = 100;
+    uint24 public constant POOL_FEE = 3000;
+    uint256 public constant DEADLINE_EXTENSION = 300;
+    uint256 public constant PRICE_PRECISION = 1e18;
+
+    event RebaseArbitrageExecuted(
+        address indexed token, 
+        uint256 profit, 
+        uint256 amountIn, 
+        uint256 amountOut, 
+        uint256 timestamp
+    );
+
+    struct ExecutionParams {
+        address rebaseToken;
+        address pairedAsset;
+        bool isSelling;
+    }
+
+    constructor(
+        address _registry, 
+        address _uniswapRouter, 
+        address _quoter, 
+        address _initialOwner
+    ) Ownable(_initialOwner) {
+        require(_registry != address(0), "Invalid registry");
+        require(_uniswapRouter != address(0), "Invalid router");
+        require(_quoter != address(0), "Invalid quoter");
+        
+        registry = IRegistry(_registry);
+        uniswapRouter = ISwapRouter(_uniswapRouter);
+        quoter = IQuoter(_quoter);
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Rebase Token Arbitrage";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address rebaseTokenAddr = registry.getAddress("REBASE_TOKEN");
+        address weth = registry.getAddress("WETH");
+        
+        if (rebaseTokenAddr == address(0)) return (0, "");
+        if (weth == address(0)) return (0, "");
+        if (asset != rebaseTokenAddr) return (0, "");
+
+        IRebaseToken rebaseToken = IRebaseToken(rebaseTokenAddr);
+        uint256 targetPrice = rebaseToken.targetPrice();
+        
+        (bool success, uint256 currentMarketPrice) = _getMarketPrice(rebaseTokenAddr, weth, amount);
+        if (!success) return (0, "");
+
+        if (currentMarketPrice > targetPrice + (targetPrice / 1000)) {
+            profit = (currentMarketPrice - targetPrice) * amount / PRICE_PRECISION;
+            executionData = abi.encode(ExecutionParams(rebaseTokenAddr, weth, true));
+        } else if (currentMarketPrice < targetPrice - (targetPrice / 1000)) {
+            profit = (targetPrice - currentMarketPrice) * amount / PRICE_PRECISION;
+            executionData = abi.encode(ExecutionParams(rebaseTokenAddr, weth, false));
+        }
+
+        if (profit < (amount * MIN_PROFIT_MARGIN / 10000)) {
+            return (0, "");
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256 finalProfit)
+    {
+        ExecutionParams memory params = abi.decode(executionData, (ExecutionParams));
+        require(params.rebaseToken != address(0), "Invalid token");
+        require(params.pairedAsset != address(0), "Invalid paired asset");
+
+        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
+            tokenIn: params.isSelling ? params.rebaseToken : params.pairedAsset,
+            tokenOut: params.isSelling ? params.pairedAsset : params.rebaseToken,
+            fee: POOL_FEE,
+            recipient: address(this),
+            deadline: block.timestamp + DEADLINE_EXTENSION,
+            amountIn: amount,
+            amountOutMinimum: _calculateMinAmountOut(amount),
+            sqrtPriceLimitX96: 0
+        });
+
+        IERC20(swapParams.tokenIn).approve(address(uniswapRouter), amount);
+        uint256 amountOut = uniswapRouter.exactInputSingle(swapParams);
+        IERC20(swapParams.tokenIn).approve(address(uniswapRouter), 0);
+
+        finalProfit = _calculateProfit(amount, amountOut, premium);
+        require(finalProfit >= (amount * MIN_PROFIT_MARGIN / 10000), "Insufficient profit");
+
+        emit RebaseArbitrageExecuted(
+            params.rebaseToken,
+            finalProfit,
+            amount,
+            amountOut,
+            block.timestamp
+        );
+
+        return (true, abi.encode(finalProfit), finalProfit);
+    }
+
+    function _getMarketPrice(address tokenIn, address tokenOut, uint256 amount)
+        internal
+        returns (bool success, uint256 price)
+    {
+        try quoter.quoteExactInputSingle(tokenIn, tokenOut, POOL_FEE, amount, 0) 
+        returns (uint256 amountOut) {
+            return (true, (amountOut * PRICE_PRECISION) / amount);
+        } catch {
+            return (false, 0);
+        }
+    }
+
+    function _calculateMinAmountOut(uint256 amountIn) internal pure returns (uint256) {
+        return (amountIn * (10000 - SLIPPAGE_TOLERANCE)) / 10000;
+    }
+
+    function _calculateProfit(uint256 amountIn, uint256 amountOut, uint256 premium) 
+        internal pure returns (uint256) 
+    {
+        return amountOut > amountIn + premium ? amountOut - amountIn - premium : 0;
+    }
+
+    function withdrawToken(address token, uint256 amount) external onlyOwner {
+        IERC20(token).safeTransfer(owner(), amount);
+    }
+
+    receive() external payable {}
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyTemplate.sol
+---Filename: StrategyTemplate.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract StrategyTemplate is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    IRegistry public immutable registry;
+    uint256 public constant SLIPPAGE_TOLERANCE = 50;
+    uint24 public constant POOL_FEE = 3000;
+    uint160 public constant SQRT_PRICE_LIMIT_X96 = 0;
+
+    constructor(address _registry) {
+        require(_registry != address(0), "Invalid registry");
+        registry = IRegistry(_registry);
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Strategy Template";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address quoter = registry.getAddress("UNISWAP_V3_QUOTER");
+        // Remove try-catch since not view anymore
+        uint256 quotedAmount = IQuoter(quoter).quoteExactInputSingle(
+            asset,
+            registry.getAddress("WETH"), // Example token
+            POOL_FEE,
+            amount,
+            SQRT_PRICE_LIMIT_X96
+        );
+        
+        if (quotedAmount > amount) {
+            profit = quotedAmount - amount;
+            executionData = abi.encode(asset);
+        }
+    }
+
+    function execute(bytes memory data, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool, bytes memory, uint256)
+    {
+        address router = registry.getAddress("UNISWAP_V3");
+        address tokenIn = abi.decode(data, (address));
+        
+        // Use approve instead of safeApprove
+        IERC20(tokenIn).approve(router, amount);
+        
+        uint256 amountOut = ISwapRouter(router).exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: registry.getAddress("WETH"),
+                fee: POOL_FEE,
+                recipient: address(this),
+                deadline: block.timestamp + 300,
+                amountIn: amount,
+                amountOutMinimum: amount * (10000 - SLIPPAGE_TOLERANCE) / 10000,
+                sqrtPriceLimitX96: SQRT_PRICE_LIMIT_X96
+            })
+        );
+        
+        // Reset approval
+        IERC20(tokenIn).approve(router, 0);
+        
+        uint256 profit = amountOut > amount + premium ? amountOut - amount - premium : 0;
+        return (true, abi.encode(amountOut), profit);
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyOracleLagArbitrage.sol
+---Filename: StrategyOracleLagArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+contract StrategyOracleLagArbitrage is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    address public registry;
+    uint256 public constant SLIPPAGE_TOLERANCE = 50; // 0.5%
+
+    constructor(address _registry) {
+        registry = _registry;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Oracle Lag Arbitrage";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address priceFeed = IRegistry(registry).getAddress("ETH_USD_FEED");
+        (, int256 oraclePrice,,,) = AggregatorV3Interface(priceFeed).latestRoundData();
+        require(oraclePrice > 0, "Invalid oracle price");
+
+        address uniswapRouter = IRegistry(registry).getAddress("UNISWAP_V2");
+        address usdc = IRegistry(registry).getAddress("USDC");
+
+        address[] memory path = new address[](2);
+        path[0] = asset; // e.g., WETH
+        path[1] = usdc; // USDC
+        uint256[] memory amounts = IUniswapV2Router02(uniswapRouter).getAmountsOut(amount, path);
+        uint256 dexPrice = amounts[1]; // USDC amount
+
+        // Normalize prices
+        uint256 oraclePriceNormalized = (uint256(oraclePrice) * amount) / 1e8; // USDC amount
+        if (oraclePriceNormalized > dexPrice) {
+            profit = oraclePriceNormalized - dexPrice; // Profit in USDC
+            executionData = abi.encode(asset, dexPrice);
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256)
+    {
+        (address asset, uint256 dexPrice) = abi.decode(executionData, (address, uint256));
+        (address token, address oracle) = abi.decode(executionData, (address, address));
+
+        require(asset != address(0), "Invalid asset");
+        address uniswapRouter = IRegistry(registry).getAddress("UNISWAP_V2");
+        address usdc = IRegistry(registry).getAddress("USDC");
+        
+
+        // Ensure sufficient balance
+        require(IERC20(asset).balanceOf(address(this)) >= amount, "Insufficient asset balance");
+        address dex = IRegistry(registry).getAddress("UNISWAP_V3");
+        // IERC20(token).forceApprove(dex, amount);
+        // Approve Uniswap router
+        IERC20(token).approve(dex, amount);
+
+        // Swap asset for USDC
+        address[] memory path = new address[](2);
+        path[0] = asset;
+        path[1] = usdc;
+        uint256 minOut = (dexPrice * (10000 - SLIPPAGE_TOLERANCE)) / 10000;
+        uint256[] memory amounts = IUniswapV2Router02(uniswapRouter).swapExactTokensForTokens(
+            amount,
+            minOut,
+            path,
+            address(this),
+            block.timestamp + 300
+        );
+
+        // Reset allowance for safety
+        IERC20(asset).approve(uniswapRouter, 0);
+
+        uint256 finalAmount = amounts[1];
+        require(finalAmount > premium, "Insufficient profit");
+
+        // return finalAmount - premium;
+        // Swap based on oracle lag
+        uint256 profit = finalAmount - premium;// Sell price - buy price
+        return (true, abi.encode(token, profit), profit - premium);    
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyMEVCapture.sol
+---Filename: StrategyMEVCapture.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+interface IUniswapV2Router {
+    function swapExactTokensForTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external returns (uint[] memory amounts);
+    function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
+}
+
+interface IUniswapV2Pair {
+    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+    function token0() external view returns (address);
+}
+
+contract StrategyMEVCapture is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    address public immutable registry;
+    uint256 public constant SLIPPAGE_TOLERANCE = 50;
+    uint256 public constant MIN_PROFIT = 100;
+
+    event MEVArbitrageExecuted(address indexed token, uint256 profit, uint256 timestamp);
+
+    constructor(address _registry) {
+        require(_registry != address(0), "Invalid registry");
+        registry = _registry;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "MEV Capture";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        if (asset == address(0)) return (0, "");
+        
+        address weth = IRegistry(registry).getAddress("WETH");
+        address router = IRegistry(registry).getAddress("UNISWAP_V2");
+        address pair = IRegistry(registry).getAddress("UNISWAP_V2_PAIR");
+        
+        if (weth == address(0) || router == address(0) || pair == address(0)) {
+            return (0, "");
+        }
+
+        (uint256 reserveAsset, uint256 reserveWeth) = _getReserves(pair, asset);
+        uint256 wethOut = _getAmountOut(amount, reserveAsset, reserveWeth);
+        uint256 assetOut = _getAmountOut(wethOut, reserveWeth, reserveAsset);
+
+        profit = assetOut > amount ? assetOut - amount : 0;
+        if (profit >= _minProfit(amount)) {
+            executionData = abi.encode(asset, weth, router);
+        }
+    }
+
+    function execute(bytes calldata executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool, bytes memory, uint256)
+    {
+        (address asset, address weth, address router) = abi.decode(executionData, (address, address, address));
+        _validate(asset, weth, router, amount);
+
+        uint256 wethReceived = _swap(router, asset, weth, amount);
+        uint256 assetReceived = _swap(router, weth, asset, wethReceived);
+        uint256 profit = _calculateProfit(assetReceived, amount, premium);
+
+        emit MEVArbitrageExecuted(asset, profit, block.timestamp);
+        return (true, abi.encode(profit), profit);
+    }
+
+    function _getReserves(address pair, address asset) internal view returns (uint256, uint256) {
+        (uint256 reserve0, uint256 reserve1,) = IUniswapV2Pair(pair).getReserves();
+        return IUniswapV2Pair(pair).token0() == asset ? (reserve0, reserve1) : (reserve1, reserve0);
+    }
+
+    function _getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut) internal pure returns (uint256) {
+        uint256 amountInWithFee = amountIn * 997;
+        uint256 numerator = amountInWithFee * reserveOut;
+        uint256 denominator = reserveIn * 1000 + amountInWithFee;
+        return numerator / denominator;
+    }
+
+    function _validate(address asset, address weth, address router, uint256 amount) internal view {
+        require(asset != address(0) && weth != address(0) && router != address(0), "Invalid addresses");
+        require(IERC20(asset).balanceOf(address(this)) >= amount, "Insufficient balance");
+    }
+
+    function _swap(address router, address tokenIn, address tokenOut, uint256 amount) internal returns (uint256) {
+        address[] memory path = new address[](2);
+        path[0] = tokenIn;
+        path[1] = tokenOut;
+
+        IERC20(tokenIn).approve(router, amount);
+        uint256[] memory amounts = IUniswapV2Router(router).swapExactTokensForTokens(
+            amount,
+            _minAmountOut(amount),
+            path,
+            address(this),
+            block.timestamp + 300
+        );
+        IERC20(tokenIn).approve(router, 0);
+        return amounts[1];
+    }
+
+    function _minProfit(uint256 amount) internal pure returns (uint256) {
+        return amount * MIN_PROFIT / 10000;
+    }
+
+    function _minAmountOut(uint256 amount) internal pure returns (uint256) {
+        return amount * (10000 - SLIPPAGE_TOLERANCE) / 10000;
+    }
+
+    function _calculateProfit(uint256 received, uint256 amount, uint256 premium) internal pure returns (uint256) {
+        require(received > amount + premium, "Insufficient profit");
+        return received - amount - premium;
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyStablecoinPegArbitrage.sol
+---Filename: StrategyStablecoinPegArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "../interfaces/ICurvePool.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+contract StrategyStablecoinPegArbitrage is IStrategy {
+    using SafeERC20 for IERC20;
+
+    address public immutable registry;
+    address public USDC;
+    address public USDT;
+    address public CURVE_3POOL;
+    address public UNISWAP_V2;
+    uint256 public slippageTolerance = 100;
+
+    event PegArbitrage(address indexed stableIn, address stableOut, uint256 amountIn, uint256 profit);
+
+    constructor(address _registry) {
+        require(_registry != address(0), "Invalid registry");
+        registry = _registry;
+        USDC = IRegistry(registry).getAddress("USDC");
+        USDT = IRegistry(registry).getAddress("USDT");
+        CURVE_3POOL = IRegistry(registry).getAddress("CURVE_3POOL");
+        UNISWAP_V2 = IRegistry(registry).getAddress("UNISWAP_V2");
+        require(USDC != address(0), "USDC address not set");
+        require(USDT != address(0), "USDT address not set");
+        require(CURVE_3POOL != address(0), "Curve 3Pool address not set");
+        require(UNISWAP_V2 != address(0), "Uniswap V2 address not set");
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Stablecoin Peg Arbitrage";
+    }
+
+    function checkOpportunity(address asset, uint256 amount) external view override returns (uint256 profit, bytes memory executionData) {
+        address otherStable = asset == USDC ? USDT : USDC;
+
+        uint256 curveOut = getCurvePrice(asset, otherStable, amount);
+        uint256 uniOut = _getUniPrice(asset, otherStable, amount);
+
+        if (curveOut > (uniOut * (10000 + slippageTolerance)) / 10000) {
+            profit = curveOut - uniOut;
+            executionData = abi.encode(asset, otherStable, curveOut);
+        } else if (uniOut > (curveOut * (10000 + slippageTolerance)) / 10000) {
+            profit = uniOut - curveOut;
+            executionData = abi.encode(otherStable, asset, uniOut);
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium) external override returns (bool success, bytes memory result, uint256) {
+        (address stableIn, address stableOut, uint256 expectedOut) = abi.decode(executionData, (address, address, uint256));
+        
+        IERC20(stableIn).approve(CURVE_3POOL, amount);
+        uint256 minDy = (expectedOut * (10000 - slippageTolerance)) / 10000;
+        uint256 received = ICurvePool(CURVE_3POOL).exchange(
+            stableIn == USDC ? int128(1) : int128(2),
+            stableOut == USDC ? int128(1) : int128(2),
+            amount,
+            minDy
+        );
+
+        address[] memory path = new address[](2);
+        path[0] = stableOut;
+        path[1] = stableIn;
+
+        IERC20(stableOut).approve(UNISWAP_V2, received);
+        uint256[] memory amounts = IUniswapV2Router02(UNISWAP_V2).swapExactTokensForTokens(
+            received,
+            (amount * (10000 - slippageTolerance)) / 10000,
+            path,
+            address(this),
+            block.timestamp + 300
+        );
+
+        uint256 finalAmount = amounts[1];
+        uint256 profit = finalAmount - amount - premium;
+        
+        emit PegArbitrage(stableIn, stableOut, amount, profit);
+        return (true, abi.encode(profit), profit);
+    }
+
+    function getCurvePrice(address assetIn, address assetOut, uint256 amount) internal view returns (uint256) {
+        int128 i = assetIn == USDC ? int128(1) : int128(2);
+        int128 j = assetOut == USDC ? int128(1) : int128(2);
+        return ICurvePool(CURVE_3POOL).get_dy(i, j, amount);
+    }
+
+    function _getUniPrice(address assetIn, address assetOut, uint256 amount) internal view returns (uint256) {
+        address[] memory path = new address[](2);
+        path[0] = assetIn;
+        path[1] = assetOut;
+        uint[] memory amounts = IUniswapV2Router02(UNISWAP_V2).getAmountsOut(amount, path);
+        return amounts[1];
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyNFTFloorArbitrage.sol
+---Filename: StrategyNFTFloorArbitrage.sol
+---File Content Start---
+// SPDX-License-License: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IStrategy.sol";
+import "../interfaces/IRegistry.sol";
+import "../interfaces/INftFloorOracle.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+
+interface ISkaleNftMarket {
+    function getFloorPrice(address nftCollection) external view returns (uint256);
+    function buy(address nftCollection, uint256 tokenId, uint256 price) external returns (bool);
+    function sell(address nftCollection, uint256 tokenId, uint256 price) external returns (bool);
+}
+
+contract StrategyNFTFloorArbitrage is IStrategy, Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    address public immutable registry;
+    uint256 public minProfitMargin = 500; // 5% (basis points)
+
+    event ArbitrageExecuted(
+        address indexed nftCollection,
+        uint256 buyPrice,
+        uint256 sellPrice,
+        uint256 profit,
+        address indexed marketplace
+    );
+
+    constructor(address _registry, address _initialOwner) Ownable(_initialOwner) {
+        registry = _registry;
+    }
+
+    function name() external pure returns (string memory) {
+        return "NFT Floor Arbitrage";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address marketplace = IRegistry(registry).getAddress("NFT_MARKETPLACE");
+        address externalMarket = IRegistry(registry).getAddress("EXTERNAL_NFT_MARKET");
+        require(marketplace != address(0) && externalMarket != address(0), "Markets not set");
+
+        uint256 chainlinkPrice = IRegistry(registry).getNftFloorPrice(asset);
+        if (chainlinkPrice == 0) return (0, "");
+
+        uint256 marketplacePrice = ISkaleNftMarket(marketplace).getFloorPrice(asset);
+        uint256 externalPrice = ISkaleNftMarket(externalMarket).getFloorPrice(asset);
+        if (marketplacePrice == 0 || externalPrice == 0) return (0, "");
+
+        uint256 buyPrice;
+        uint256 sellPrice;
+        bool buyFromMarketplace;
+
+        if (externalPrice < marketplacePrice) {
+            buyPrice = externalPrice;
+            sellPrice = marketplacePrice;
+            buyFromMarketplace = false;
+        } else if (marketplacePrice < externalPrice) {
+            buyPrice = marketplacePrice;
+            sellPrice = externalPrice;
+            buyFromMarketplace = true;
+        } else {
+            return (0, "");
+        }
+
+        if (buyPrice > amount) return (0, "");
+
+        uint256 profitMargin = ((sellPrice - buyPrice) * 10000) / buyPrice;
+        if (profitMargin < minProfitMargin) return (0, "");
+
+        profit = sellPrice - buyPrice;
+        executionData = abi.encode(asset, marketplace, externalMarket, buyFromMarketplace);
+        return (profit, executionData);
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256)
+    {
+        (address nftCollection, address marketplace, address externalMarket, bool buyFromMarketplace) = abi.decode(
+            executionData,
+            (address, address, address, bool)
+        );
+        require(nftCollection != address(0), "Invalid NFT collection");
+
+        uint256 chainlinkPrice = IRegistry(registry).getNftFloorPrice(nftCollection);
+        require(chainlinkPrice > 0, "Invalid Chainlink price");
+
+        uint256 marketplacePrice = ISkaleNftMarket(marketplace).getFloorPrice(nftCollection);
+        uint256 externalPrice = ISkaleNftMarket(externalMarket).getFloorPrice(nftCollection);
+        require(marketplacePrice > 0 && externalPrice > 0, "Invalid market prices");
+
+        uint256 buyPrice;
+        uint256 sellPrice;
+        if (externalPrice < marketplacePrice && !buyFromMarketplace) {
+            buyPrice = externalPrice;
+            sellPrice = marketplacePrice;
+        } else if (marketplacePrice < externalPrice && buyFromMarketplace) {
+            buyPrice = marketplacePrice;
+            sellPrice = externalPrice;
+        } else {
+            revert("No arbitrage opportunity");
+        }
+
+        require(((sellPrice - buyPrice) * 10000) / buyPrice >= minProfitMargin, "Profit margin too low");
+        require(buyPrice <= amount, "Buy price exceeds amount");
+
+        address weth = IRegistry(registry).getAddress("WETH");
+        require(weth != address(0), "WETH not set");
+        IERC20 token = IERC20(weth);
+        require(token.balanceOf(address(this)) >= buyPrice, "Insufficient WETH");
+
+        bool buySuccess;
+        uint256 tokenId = 0; // Simplified; real tokenId from event
+        if (buyFromMarketplace) {
+            token.approve(marketplace, buyPrice);
+            buySuccess = ISkaleNftMarket(marketplace).buy(nftCollection, tokenId, buyPrice);
+            token.approve(marketplace, 0);
+        } else {
+            token.approve(externalMarket, buyPrice);
+            buySuccess = ISkaleNftMarket(externalMarket).buy(nftCollection, tokenId, buyPrice);
+            token.approve(externalMarket, 0);
+        }
+        require(buySuccess, "Buy failed");
+
+        bool sellSuccess;
+        IERC721(nftCollection).approve(buyFromMarketplace ? externalMarket : marketplace, tokenId);
+        if (buyFromMarketplace) {
+            sellSuccess = ISkaleNftMarket(externalMarket).sell(nftCollection, tokenId, sellPrice);
+        } else {
+            sellSuccess = ISkaleNftMarket(marketplace).sell(nftCollection, tokenId, sellPrice);
+        }
+        IERC721(nftCollection).approve(address(0), tokenId);
+        require(sellSuccess, "Sell failed");
+
+        uint256 profit = sellPrice - buyPrice;
+        require(profit > premium, "Profit does not cover premium");
+
+        emit ArbitrageExecuted(nftCollection, buyPrice, sellPrice, profit, buyFromMarketplace ? marketplace : externalMarket);
+
+        success = true;
+        result = abi.encode(nftCollection, tokenId, profit);
+        return (success, result, profit - premium);
+    }
+
+    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+        return this.onERC721Received.selector;
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyAaveLiquidation.sol
+---Filename: StrategyAaveLiquidation.sol
+---File Content Start---
+// SPDX-License-License: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IStrategy.sol";
+import "../interfaces/IRegistry.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+interface IAaveLendingPool {
+    function liquidationCall(address collateral, address debt, address user, uint256 debtToCover, bool receiveAToken) external;
+}
+
+contract StrategyAaveLiquidation is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    address public immutable registry;
+
+    constructor(address _registry) {
+        registry = _registry;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Aave Liquidation";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address aave = IRegistry(registry).getAddress("AAVE_LENDING_POOL");
+        // Off-chain: Monitor Aave health factors
+        address collateral = IRegistry(registry).getAddress("WETH");
+        uint256 collateralValue = 1 ether; // Placeholder
+        if (collateralValue > amount) {
+            profit = collateralValue - amount;
+            executionData = abi.encode(collateral, asset, amount);
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256)
+    {
+        (address collateral, address debtAsset, uint256 debt) = abi.decode(executionData, (address, address, uint256));
+        address aave = IRegistry(registry).getAddress("AAVE_LENDING_POOL");
+        IERC20 debtToken = IERC20(debtAsset);
+        require(debtToken.balanceOf(address(this)) >= debt, "Insufficient balance");
+
+        debtToken.forceApprove(aave, debt);
+        try IAaveLendingPool(aave).liquidationCall(collateral, debtAsset, address(this), debt, false) {
+            // Liquidation successful
+        } catch {
+            revert("Liquidation failed");
+        }
+        debtToken.forceApprove(aave, 0);
+
+        uint256 collateralValue = 1 ether; // Placeholder
+        uint256 profit = collateralValue - debt;
+        require(profit > premium, "Profit too low");
+
+        success = true;
+        result = abi.encode(collateral, profit);
+        return (success, result, profit - premium);
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyBase.sol
+---Filename: StrategyBase.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IStrategy.sol";
+import "../interfaces/IRegistry.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+abstract contract BaseStrategy is IStrategy, Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    IRegistry public immutable registry;
+    address public immutable executor;
+
+    modifier onlyExecutor() {
+        require(msg.sender == executor, "Only executor");
+        _;
+    }
+
+    constructor(address _registry, address _executor) {
+        require(_registry != address(0) && _executor != address(0), "Invalid addresses");
+        registry = IRegistry(_registry);
+        executor = _executor;
+    }
+
+    function name() external pure virtual override returns (string memory) {
+        return "BaseStrategy";
+    }
+
+    function checkOpportunity(
+        address asset,
+        uint256 amount
+    ) external view virtual override returns (uint256 profit, bytes memory executionData) {
+        profit = 0;
+        executionData = "";
+    }
+
+    function execute(
+        bytes memory executionData,
+        uint256 amount,
+        uint256 premium
+    ) external virtual override onlyExecutor nonReentrant returns (bool, bytes memory, uint256) {
+        executionData; amount; premium; // Silence unused parameter warnings
+        return (false, "", 0);
+    }
+
+    function _approveToken(address token, address spender, uint256 amount) internal {
+        IERC20(token).forceApprove(spender, amount); // Using forceApprove instead
+    }
+
+    function emergencyWithdraw(address token) external onlyOwner {
+        IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyNFTCollateralLiquidation.sol
+---Filename: StrategyNFTCollateralLiquidation.sol
+---File Content Start---
+// SPDX-License-License: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+interface ISkaleNftLending {
+    function liquidate(address nftContract, uint256 tokenId, uint256 amount) external;
+}
+
+contract StrategyNFTCollateralLiquidation is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    address public immutable registry;
+
+    event NFTLiquidationExecuted(address indexed nftContract, uint256 tokenId, uint256 profit, uint256 timestamp);
+
+    constructor(address _registry) {
+        registry = _registry;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "NFT Collateral Liquidation";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        if (asset != IRegistry(registry).getAddress("USDC")) return (0, "");
+        address skaleLending = IRegistry(registry).getAddress("SKALE_NFT_LENDING");
+        address nftContract = IRegistry(registry).getAddress("NFT_CONTRACT");
+        uint256 tokenId = 1; // Off-chain monitoring for liquidatable tokenId
+        uint256 debt = amount; // Debt in USDC
+        uint256 nftValue = IRegistry(registry).getNftFloorPrice(nftContract); // Floor price in USDC
+
+        if (nftValue > debt) {
+            profit = nftValue - debt;
+            executionData = abi.encode(nftContract, tokenId, debt);
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256)
+    {
+        (address nftContract, uint256 tokenId, uint256 debt) = abi.decode(executionData, (address, uint256, uint256));
+        require(nftContract != address(0) && debt == amount, "Invalid NFT contract or debt");
+        address skaleLending = IRegistry(registry).getAddress("SKALE_NFT_LENDING");
+        address usdc = IRegistry(registry).getAddress("USDC");
+        require(skaleLending != address(0) && usdc != address(0), "Invalid lending or USDC address");
+
+        require(IERC20(usdc).balanceOf(address(this)) >= debt, "Insufficient USDC balance");
+
+        IERC20(usdc).approve(skaleLending, debt);
+        try ISkaleNftLending(skaleLending).liquidate(nftContract, tokenId, debt) {
+            // Liquidation successful
+        } catch {
+            revert("Liquidation failed");
+        }
+        IERC20(usdc).approve(skaleLending, 0);
+
+        require(IERC721(nftContract).ownerOf(tokenId) == address(this), "NFT not received");
+
+        uint256 nftValue = IRegistry(registry).getNftFloorPrice(nftContract);
+        require(nftValue > debt + premium, "Insufficient profit");
+        uint256 profit = nftValue - debt - premium;
+
+        emit NFTLiquidationExecuted(nftContract, tokenId, profit, block.timestamp);
+
+        success = true;
+        result = abi.encode(nftContract, tokenId, debt, profit);
+        return (success, result, profit);
+    }
+
+    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
+        return this.onERC721Received.selector;
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyFlashloanGasArbitrage.sol
+---Filename: StrategyFlashloanGasArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+
+interface IGasPriceOracle {
+    function getL1Fee(bytes calldata data) external view returns (uint256);
+}
+
+interface IWETH {
+    function deposit() external payable;
+}
+
+contract StrategyFlashloanGasArbitrage is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    address public immutable registry;
+    uint256 public constant SLIPPAGE_TOLERANCE = 50;
+    address public constant OPTIMISM_GAS_ORACLE = 0x420000000000000000000000000000000000000F;
+
+    event GasArbitrageExecuted(address indexed asset, uint256 profit, uint256 timestamp);
+
+    constructor(address _registry) {
+        registry = _registry;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Flashloan Gas Arbitrage";
+    }
+
+    struct SwapParams {
+        address tokenIn;
+        address tokenOut;
+        uint24 fee;
+        address recipient;
+        uint256 deadline;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address usdc = IRegistry(registry).getAddress("USDC");
+        if (asset != usdc) return (0, "");
+
+        (address weth, address uniswapRouter) = _getAddresses();
+        uint256 l1Fee = _estimateL1Fee();
+        uint256 refund = l1Fee / 2;
+
+        uint256 wethOut = _simulateSwap(usdc, weth, amount, uniswapRouter);
+        uint256 refundInWeth = _convertRefund(refund);
+
+        if (wethOut + refundInWeth > amount) {
+            profit = wethOut + refundInWeth - amount;
+            executionData = abi.encode(weth, refund, uniswapRouter);
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256 profit)
+    {
+        (address weth, uint256 refund, address uniswapRouter) = abi.decode(executionData, (address, uint256, address));
+        address usdc = IRegistry(registry).getAddress("USDC");
+
+        _validateAddresses(weth, uniswapRouter, usdc);
+        require(IERC20(usdc).balanceOf(address(this)) >= amount, "Insufficient USDC");
+
+        if (refund > 0 && address(this).balance >= refund) {
+            IWETH(weth).deposit{value: refund}();
+        }
+
+        uint256 wethOut = _executeSwap(usdc, weth, amount, uniswapRouter);
+        uint256 refundInWeth = _convertRefund(refund);
+        profit = _calculateProfit(amount, premium, wethOut, refundInWeth);
+
+        emit GasArbitrageExecuted(usdc, profit, block.timestamp);
+        return (true, abi.encode(wethOut, refundInWeth, profit), profit);
+    }
+
+    function _getAddresses() internal view returns (address weth, address uniswapRouter) {
+        return (
+            IRegistry(registry).getAddress("WETH"),
+            IRegistry(registry).getAddress("UNISWAP_V3")
+        );
+    }
+
+    function _estimateL1Fee() internal view returns (uint256) {
+        bytes memory data = abi.encodeCall(this.execute, (bytes(""), 0, 0));
+        return IGasPriceOracle(OPTIMISM_GAS_ORACLE).getL1Fee(data);
+    }
+
+    function _simulateSwap(address tokenIn, address tokenOut, uint256 amount, address router) internal returns (uint256) {
+        try ISwapRouter(router).exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                fee: 500,
+                recipient: address(this),
+                deadline: block.timestamp + 300,
+                amountIn: amount,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            })
+        ) returns (uint256 amountOut) {
+            return amountOut;
+        } catch {
+            return 0;
+        }
+    }
+
+    function _convertRefund(uint256 refund) internal view returns (uint256) {
+        address priceFeed = IRegistry(registry).getAddress("ETH_USD_FEED");
+        (, int256 ethPrice, , , ) = AggregatorV3Interface(priceFeed).latestRoundData();
+        return ethPrice > 0 ? (refund * uint256(ethPrice)) / 1e8 : 0;
+    }
+
+    function _validateAddresses(address weth, address router, address usdc) internal view {
+        require(weth == IRegistry(registry).getAddress("WETH"), "Invalid WETH");
+        require(router == IRegistry(registry).getAddress("UNISWAP_V3"), "Invalid router");
+        require(usdc != address(0), "Invalid USDC");
+    }
+
+    function _executeSwap(address tokenIn, address tokenOut, uint256 amount, address router) internal returns (uint256) {
+        IERC20(tokenIn).approve(router, amount);
+        uint256 amountOut = ISwapRouter(router).exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                fee: 500,
+                recipient: address(this),
+                deadline: block.timestamp + 300,
+                amountIn: amount,
+                amountOutMinimum: (amount * (10000 - SLIPPAGE_TOLERANCE)) / 10000,
+                sqrtPriceLimitX96: 0
+            })
+        );
+        IERC20(tokenIn).approve(router, 0);
+        return amountOut;
+    }
+
+    function _calculateProfit(uint256 amount, uint256 premium, uint256 wethOut, uint256 refund) internal pure returns (uint256) {
+        uint256 totalValue = wethOut + refund;
+        require(totalValue > amount + premium, "Insufficient profit");
+        return totalValue - amount - premium;
+    }
+
+    receive() external payable {}
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyGovernanceArbitrage.sol
+---Filename: StrategyGovernanceArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+
+contract StrategyGovernanceArbitrage is IStrategy {
+    using SafeERC20 for IERC20;
+
+    address public registry;
+
+    constructor(address _registry) {
+        registry = _registry;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Governance Token Arbitrage";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address governanceToken = IRegistry(registry).getAddress("GOV_TOKEN");
+        address uniswapRouter = IRegistry(registry).getAddress("UNISWAP_V2");
+
+        address[] memory path = new address[](2);
+        path[0] = asset;
+        path[1] = governanceToken;
+        uint256 tokenAmount = IUniswapV2Router02(uniswapRouter).getAmountsOut(amount, path)[1];
+
+        address[] memory reversePath = new address[](2);
+        reversePath[0] = governanceToken;
+        reversePath[1] = asset;
+        uint256 sellAmount = IUniswapV2Router02(uniswapRouter).getAmountsOut(tokenAmount, reversePath)[1];
+
+        if (sellAmount > amount * 110 / 100) {
+            profit = sellAmount - amount;
+            executionData = abi.encode(governanceToken);
+        }
+    }
+
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+    external
+    override
+    returns (bool success, bytes memory result, uint256)
+{
+    (address dao, address token) = abi.decode(executionData, (address, address));
+    
+    address governanceToken = abi.decode(executionData, (address));
+    
+    address uniswapRouter = IRegistry(registry).getAddress("UNISWAP_V2");
+    address usdc = IRegistry(registry).getAddress("USDC");
+
+    // Buy governance token
+    address[] memory path = new address[](2);
+    path[0] = usdc;
+    path[1] = governanceToken;
+    require(IERC20(usdc).balanceOf(address(this)) >= amount, "Insufficient USDC balance");
+    IERC20(usdc).approve(dao, amount);
+    // IERC20(token).forceApprove(dao, amount);
+    uint256[] memory amounts = IUniswapV2Router02(uniswapRouter).swapExactTokensForTokens(
+        amount,
+        0,
+        path,
+        address(this),
+        block.timestamp + 300
+    );
+    IERC20(usdc).approve(uniswapRouter, 0); // Reset allowance
+
+    // Sell governance tokens
+    path[0] = governanceToken;
+    path[1] = usdc;
+    uint256 tokenAmount = amounts[1];
+    require(IERC20(governanceToken).balanceOf(address(this)) >= tokenAmount, "Insufficient gov token balance");
+    IERC20(governanceToken).approve(uniswapRouter, tokenAmount);
+    amounts = IUniswapV2Router02(uniswapRouter).swapExactTokensForTokens(
+        tokenAmount,
+        0,
+        path,
+        address(this),
+        block.timestamp + 300
+    );
+    IERC20(governanceToken).approve(uniswapRouter, 0); // Reset allowance
+
+    uint256 finalAmount = amounts[1];
+    require(finalAmount > amount + premium, "Insufficient profit");
+
+    // return finalAmount - amount - premium;
+        // Buy, vote, sell
+    uint256 profit = finalAmount - amount - premium;// Sell price - buy price
+    return (true, abi.encode(token, profit), profit - premium);
+}
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyBridgingLatencyArbitrage.sol
+---Filename: StrategyBridgingLatencyArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IStrategy.sol";
+import "../interfaces/IRegistry.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/IQuoterV2.sol"; // Import IQuoterV2
+
+// SKALE IMA Bridge interface (simplified)
+interface ISkaleIMABridge {
+    function deposit(
+        address token,
+        uint256 amount,
+        address receiver,
+        bytes32 destinationChainId
+    ) external;
+    function withdraw(
+        address token,
+        uint256 amount,
+        uint256 receiver
+    ) external;
+}
+
+contract StrategyBridgingLatencyArbitrage is IStrategy, ReentrancyGuard, Ownable {
+    using SafeERC20 for IERC20;
+
+    address public immutable registry;
+    ISwapRouter public immutable uniswapRouter; // Uniswap V3 on SKALE (Ruby Exchange) or Arbitrum
+    IQuoterV2 public immutable uniswapQuoter;   // New: For price quoting
+    ISkaleIMABridge public immutable skaleBridge;
+    uint256 public constant SLIPPAGE_TOLERANCE = 50; // 0.5% (50 basis points)
+    uint256 public constant DEADLINE_EXTENSION = 300; // 5 minutes
+    uint24 public constant POOL_FEE = 3000; // Uniswap V3 0.3% fee tier
+    bytes32 public constant ARBITRUM_CHAIN_ID = bytes32(uint256(42161)); // Arbitrum mainnet chain ID
+    uint256 public constant MIN_PROFIT_MARGIN = 100; // 1% minimum profit
+    bool public paused;
+
+    // Supported assets (mapped to their Chainlink price feeds)
+    mapping(address => address) public assetPriceFeeds; // asset => Chainlink feed
+    address[] public supportedAssets;
+
+    event ArbitrageExecuted(
+        address indexed asset,
+        uint256 amountIn,
+        uint256 profit,
+        bool buyOnSkale,
+        uint256 timestamp
+    );
+    event AssetAdded(address indexed asset, address priceFeed);
+    event Paused(bool paused);
+
+    modifier whenNotPaused() {
+        require(!paused, "Strategy paused");
+        _;
+    }
+
+    constructor(
+        address _registry,
+        address _uniswapRouter,
+        address _uniswapQuoter, // Add _uniswapQuoter parameter
+        address _skaleBridge,
+        address _initialOwner
+    ) Ownable(_initialOwner) {
+        registry = _registry;
+        uniswapRouter = ISwapRouter(_uniswapRouter);
+        uniswapQuoter = IQuoterV2(_uniswapQuoter); // Initialize the quoter
+        skaleBridge = ISkaleIMABridge(_skaleBridge);
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Bridging Latency Arbitrage";
+    }
+
+    // Add supported asset with its Chainlink price feed
+    function addSupportedAsset(address asset, address priceFeed) external onlyOwner {
+        require(asset != address(0) && priceFeed != address(0), "Invalid addresses");
+        require(assetPriceFeeds[asset] == address(0), "Asset already supported");
+        assetPriceFeeds[asset] = priceFeed;
+        supportedAssets.push(asset);
+        emit AssetAdded(asset, priceFeed);
+    }
+
+    // Pause or unpause the strategy
+    function setPaused(bool _paused) external onlyOwner {
+        paused = _paused;
+        emit Paused(_paused);
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        override
+        whenNotPaused
+        returns (uint256 profit, bytes memory executionData)
+    {
+        // Validate asset
+        address priceFeed = assetPriceFeeds[asset];
+        if (priceFeed == address(0)) return (0, "");
+
+        // Get SKALE price (Ruby Exchange) using the Quoter
+        // The 'router' parameter in _getUniswapV3Price is now functionally redundant
+        // as we use the fixed uniswapQuoter instance.
+        (uint256 skalePrice, ) = _getUniswapV3Price(asset, amount); // Removed router parameter
+
+        // Get Arbitrum price (assume off-chain oracle or Chainlink CCIP)
+        // In production, use Chainlink CCIP or a trusted oracle for Arbitrum price
+        // Placeholder: Assume 2% price difference (to be replaced with real oracle)
+        uint256 arbitrumPrice = skalePrice * 102 / 100; // 2% higher on Arbitrum
+
+        bool buyOnSkale = skalePrice < arbitrumPrice;
+        uint256 buyPrice = buyOnSkale ? skalePrice : arbitrumPrice;
+        uint256 sellPrice = buyOnSkale ? arbitrumPrice : skalePrice;
+
+        // Estimate costs
+        uint256 bridgeFee = _estimateBridgeFee(asset, amount); // SKALE IMA Bridge fee
+        uint256 arbitrumGasCost = buyOnSkale ? _estimateArbitrumGasCost() : 0;
+
+        // Calculate profit
+        if (sellPrice > buyPrice) {
+            uint256 grossProfit = sellPrice - buyPrice;
+            uint256 netProfit = grossProfit > (bridgeFee + arbitrumGasCost) ? grossProfit - (bridgeFee + arbitrumGasCost) : 0;
+            uint256 profitMargin = (netProfit * 10000) / buyPrice;
+            if (profitMargin >= MIN_PROFIT_MARGIN) {
+                profit = netProfit;
+                executionData = abi.encode(buyOnSkale); // skaleRouter is no longer needed in executionData
+            }
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        whenNotPaused
+        returns (bool success, bytes memory result, uint256)
+    {
+        (bool buyOnSkale) = abi.decode(executionData, (bool)); // Removed skaleRouter from decoding
+        address asset = IRegistry(registry).getAddress("USDC"); // Default to USDC (configurable)
+        address weth = IRegistry(registry).getAddress("WETH");
+
+        // Validate inputs
+        require(assetPriceFeeds[asset] != address(0), "Unsupported asset");
+        require(amount > 0, "Invalid amount");
+        IERC20 assetToken = IERC20(asset);
+        require(assetToken.balanceOf(address(this)) >= amount, "Insufficient balance");
+
+        uint256 wethOut;
+        if (buyOnSkale) {
+            // Buy WETH on SKALE (Ruby Exchange)
+            wethOut = _swapOnSkale(asset, weth, amount); // Removed skaleRouter parameter
+
+            // Bridge WETH to Arbitrum
+            _bridgeToArbitrum(weth, wethOut);
+        } else {
+            // Bridge USDC to Arbitrum
+            _bridgeToArbitrum(asset, amount);
+
+            // Swap USDC to WETH on Arbitrum (handled by companion contract)
+            // Placeholder: Assume swap occurs on Arbitrum
+            wethOut = amount; // Simplified
+        }
+
+        // Note: Sell swap on destination chain is handled by a companion contract
+        // For simplicity, assume a callback updates the profit (production requires cross-chain messaging)
+        uint256 usdcOut = _simulateSellSwap(weth, wethOut); // Replace with actual cross-chain result
+        require(usdcOut > amount + premium, "Insufficient profit");
+        uint256 profit = usdcOut - amount - premium;
+
+        emit ArbitrageExecuted(asset, amount, profit, buyOnSkale, block.timestamp);
+        success = true;
+        result = abi.encode(buyOnSkale, profit);
+        return (success, result, profit);
+    }
+
+    // Swap on SKALE (Ruby Exchange, Uniswap V3-compatible)
+    function _swapOnSkale(address tokenIn, address tokenOut, uint256 amountIn) // Removed router parameter
+        internal
+        returns (uint256 amountOut)
+    {
+        IERC20(tokenIn).approve(address(uniswapRouter), amountIn);
+
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
+            fee: POOL_FEE,
+            recipient: address(this),
+            deadline: block.timestamp + DEADLINE_EXTENSION,
+            amountIn: amountIn,
+            amountOutMinimum: (amountIn * (10000 - SLIPPAGE_TOLERANCE)) / 10000,
+            sqrtPriceLimitX96: 0
+        });
+
+        amountOut = uniswapRouter.exactInputSingle(params);
+        IERC20(tokenIn).approve(address(uniswapRouter), 0);
+        require(amountOut > 0, "Swap failed");
+    }
+
+    // Bridge asset to Arbitrum via SKALE IMA Bridge
+    function _bridgeToArbitrum(address token, uint256 amount) internal {
+        IERC20(token).approve(address(skaleBridge), amount);
+        skaleBridge.deposit(token, amount, address(this), ARBITRUM_CHAIN_ID);
+        IERC20(token).approve(address(skaleBridge), 0);
+    }
+
+    // Estimate bridge fee (placeholder, replace with actual IMA Bridge fee structure)
+    function _estimateBridgeFee(address, uint256) internal pure returns (uint256) {
+        return 0; // SKALE IMA Bridge is typically low-cost or free
+    }
+
+    // Estimate Arbitrum gas cost (placeholder, replace with actual estimation)
+    function _estimateArbitrumGasCost() internal view returns (uint256) {
+        address ethUsdFeed = IRegistry(registry).getAddress("ETH_USD_FEED");
+        (, int256 ethPrice,,,) = AggregatorV3Interface(ethUsdFeed).latestRoundData();
+        require(ethPrice > 0, "Invalid ETH price");
+        uint256 gasPrice = 100 gwei; // Arbitrum gas price estimate
+        uint256 gasCostEth = (200_000 * gasPrice) / 1e18; // 200k gas
+        return (gasCostEth * uint256(ethPrice)) / 1e8; // Convert to USD
+    }
+
+    // Simulate sell swap (replace with actual cross-chain swap via companion contract)
+    function _simulateSellSwap(address tokenIn, uint256 amountIn) internal pure returns (uint256) {
+        return amountIn * 101 / 100; // Placeholder: 1% profit
+    }
+
+    // Get Uniswap V3 price using IQuoterV2
+    function _getUniswapV3Price(address tokenIn, uint256 amountIn) // Removed router parameter
+        internal
+        // view
+        returns (uint256 amountOut, bool valid)
+    {
+        // Use the uniswapQuoter to get a price quote
+        try uniswapQuoter.quoteExactInputSingle(
+            IQuoterV2.QuoteExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: IRegistry(registry).getAddress("WETH"), // Assuming WETH is the quote currency
+                amountIn: amountIn,
+                fee: POOL_FEE,
+                sqrtPriceLimitX96: 0
+            })
+        ) returns (uint256 quotedAmountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate) {
+            // quoteExactInputSingle returns multiple values. We only need quotedAmountOut for the price.
+            amountOut = quotedAmountOut;
+            valid = true;
+        } catch {
+            amountOut = 0;
+            valid = false;
+        }
+    }
+
+    // Receive ETH for bridge fees (if any)
+    receive() external payable {}
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyLPBurnArbitrage.sol
+---Filename: StrategyLPBurnArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+contract StrategyLPBurnArbitrage is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    address public registry;
+    uint256 public constant SLIPPAGE_TOLERANCE = 50; // 0.5%
+
+    constructor(address _registry) {
+        registry = _registry;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "LP Burn Arbitrage";
+    }
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address pair = IRegistry(registry).getAddress("UNISWAP_V2_PAIR"); // e.g., USDC/WETH
+        address uniswapRouter = IRegistry(registry).getAddress("UNISWAP_V2");
+        (uint256 reserve0, uint256 reserve1,) = IUniswapV2Pair(pair).getReserves();
+        address token0 = IUniswapV2Pair(pair).token0();
+        address token1 = IUniswapV2Pair(pair).token1();
+        uint256 totalSupply = IUniswapV2Pair(pair).totalSupply();
+
+        // Calculate amounts received from burning LP tokens
+        uint256 amount0Out = (amount * reserve0) / totalSupply;
+        uint256 amount1Out = (amount * reserve1) / totalSupply;
+
+        // Convert both tokens to `asset` (e.g., USDC)
+        uint256 token0Value = 0;
+        if (token0 != asset) {
+            address[] memory path = new address[](2);
+            path[0] = token0;
+            path[1] = asset;
+            token0Value = IUniswapV2Router02(uniswapRouter).getAmountsOut(amount0Out, path)[1];
+        } else {
+            token0Value = amount0Out;
+        }
+
+        uint256 token1Value = 0;
+        if (token1 != asset) {
+            address[] memory path = new address[](2);
+            path[0] = token1;
+            path[1] = asset;
+            token1Value = IUniswapV2Router02(uniswapRouter).getAmountsOut(amount1Out, path)[1];
+        } else {
+            token1Value = amount1Out;
+        }
+
+        uint256 totalValue = token0Value + token1Value;
+        if (totalValue > amount) {
+            profit = totalValue - amount;
+            executionData = abi.encode(pair, token0, token1);
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256)
+    {
+        (address pair, address token0, address token1) = abi.decode(executionData, (address, address, address));
+        // (address pool, address token) = abi.decode(executionData, (address, address));
+      
+        require(pair != address(0) && token0 != address(0) && token1 != address(0), "Invalid pair or tokens");
+        address uniswapRouter = IRegistry(registry).getAddress("UNISWAP_V2");
+        address asset = IRegistry(registry).getAddress("USDC");
+
+        // Ensure sufficient LP token balance
+        require(IERC20(pair).balanceOf(address(this)) >= amount, "Insufficient LP balance");
+
+        // Burn LP tokens to receive token0 and token1
+        IERC20(pair).approve(pair, amount);
+        IUniswapV2Pair(pair).burn(address(this));
+        IERC20(pair).approve(pair, 0); // Reset allowance
+
+        // Get balances of token0 and token1
+        uint256 token0Balance = IERC20(token0).balanceOf(address(this));
+        uint256 token1Balance = IERC20(token1).balanceOf(address(this));
+        require(token0Balance > 0 || token1Balance > 0, "No tokens received from burn");
+
+        // Swap token0 to asset (if not already asset)
+        uint256 assetReceived = 0;
+        if (token0 != asset && token0Balance > 0) {
+            IERC20(token0).approve(uniswapRouter, token0Balance);
+            address[] memory path = new address[](2);
+            path[0] = token0;
+            path[1] = asset;
+            uint256 minOut = (token0Balance * (10000 - SLIPPAGE_TOLERANCE)) / 10000;
+            uint256[] memory amounts = IUniswapV2Router02(uniswapRouter).swapExactTokensForTokens(
+                token0Balance,
+                minOut,
+                path,
+                address(this),
+                block.timestamp + 300
+            );
+            assetReceived += amounts[1];
+            IERC20(token0).approve(uniswapRouter, 0); // Reset allowance
+        } else if (token0 == asset) {
+            assetReceived += token0Balance;
+        }
+
+        // Swap token1 to asset (if not already asset)
+        if (token1 != asset && token1Balance > 0) {
+            IERC20(token1).approve(uniswapRouter, token1Balance);
+            address[] memory path = new address[](2);
+            path[0] = token1;
+            path[1] = asset;
+            uint256 minOut = (token1Balance * (10000 - SLIPPAGE_TOLERANCE)) / 10000;
+            uint256[] memory amounts = IUniswapV2Router02(uniswapRouter).swapExactTokensForTokens(
+                token1Balance,
+                minOut,
+                path,
+                address(this),
+                block.timestamp + 300
+            );
+            assetReceived += amounts[1];
+            IERC20(token1).approve(uniswapRouter, 0); // Reset allowance
+        } else if (token1 == asset) {
+            assetReceived += token1Balance;
+        }
+
+        // Calculate profit
+        require(assetReceived > amount + premium, "Insufficient profit");
+        // return assetReceived - amount - premium;
+        // Burn LP, withdraw
+        uint256 profit = assetReceived - amount - premium;// Withdrawn value - cost
+        return (true, abi.encode(token1, profit), profit - premium);    
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyGasRefundArbitrage.sol
+---Filename: StrategyGasRefundArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "../utils/StrategyLib.sol";
+
+contract StrategyGasRefundArbitrage is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    address public immutable registry;
+    uint256 public constant SLIPPAGE_TOLERANCE = 50;
+    uint256 public constant ESTIMATED_GAS = 100000;
+
+    event GasArbitrageExecuted(address indexed asset, uint256 profit, uint256 timestamp);
+
+    constructor(address _registry) {
+        registry = _registry;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Gas Refund Arbitrage";
+    }
+
+    struct ExecutionParams {
+        address weth;
+        uint256 refund;
+        address router;
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address usdc = IRegistry(registry).getAddress("USDC");
+        if (asset != usdc) return (0, "");
+
+        (address weth, address router, uint256 wethOut) = _getBestSwapRoute(usdc, amount);
+        (uint256 ethPrice, uint8 decimals) = StrategyLib.getOnchainPrice(IRegistry(registry).getAddress("ETH_USD_FEED"));
+        uint256 refundInWeth = _calculateRefundValue(ethPrice, decimals);
+
+        if (wethOut + refundInWeth > amount) {
+            profit = wethOut + refundInWeth - amount;
+            executionData = abi.encode(ExecutionParams(weth, refundInWeth, router));
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool, bytes memory, uint256)
+    {
+        ExecutionParams memory params = abi.decode(executionData, (ExecutionParams));
+        address usdc = IRegistry(registry).getAddress("USDC");
+
+        _validateExecution(params.weth, params.router, usdc, amount);
+        uint256 wethOut = _executeSwap(usdc, params.weth, amount, params.router);
+        uint256 profit = _calculateProfit(amount, premium, wethOut, params.refund);
+
+        emit GasArbitrageExecuted(usdc, profit, block.timestamp);
+        return (true, abi.encode(wethOut, params.refund, profit), profit);
+    }
+
+    function _getBestSwapRoute(address usdc, uint256 amount) internal view returns (address, address, uint256) {
+        address weth = IRegistry(registry).getAddress("WETH");
+        address uniswap = IRegistry(registry).getAddress("UNISWAP_V2");
+        address sushiswap = IRegistry(registry).getAddress("SUSHISWAP");
+
+        uint256 uniOut = StrategyLib._getPrice(uniswap, usdc, weth, amount);
+        uint256 sushiOut = StrategyLib._getPrice(sushiswap, usdc, weth, amount);
+
+        return uniOut >= sushiOut 
+            ? (weth, uniswap, uniOut) 
+            : (weth, sushiswap, sushiOut);
+    }
+
+    function _calculateRefundValue(uint256 ethPrice, uint8 decimals) internal view returns (uint256) {
+        uint256 gasCost = tx.gasprice * ESTIMATED_GAS;
+        uint256 refund = gasCost / 2;
+        return (refund * ethPrice) / (10 ** decimals);
+    }
+
+    function _validateExecution(address weth, address router, address usdc, uint256 amount) internal view {
+        require(weth == IRegistry(registry).getAddress("WETH"), "Invalid WETH");
+        require(
+            router == IRegistry(registry).getAddress("UNISWAP_V2") ||
+            router == IRegistry(registry).getAddress("SUSHISWAP"),
+            "Invalid router"
+        );
+        require(usdc != address(0), "Invalid USDC");
+        require(IERC20(usdc).balanceOf(address(this)) >= amount, "Insufficient USDC");
+    }
+
+    function _executeSwap(address tokenIn, address tokenOut, uint256 amount, address router) internal returns (uint256) {
+        address[] memory path = new address[](2);
+        path[0] = tokenIn;
+        path[1] = tokenOut;
+        
+        IERC20(tokenIn).approve(router, amount);
+        uint256 amountOut = StrategyLib.swapTokens(
+            router,
+            path,
+            amount,
+            (amount * (10000 - SLIPPAGE_TOLERANCE)) / 10000
+        );
+        IERC20(tokenIn).approve(router, 0);
+        
+        return amountOut;
+    }
+
+    function _calculateProfit(uint256 amount, uint256 premium, uint256 wethOut, uint256 refund) internal pure returns (uint256) {
+        uint256 totalValue = wethOut + refund;
+        require(totalValue > amount + premium, "Insufficient profit");
+        return totalValue - amount - premium;
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyFlashMintArbitrage.sol
+---Filename: StrategyFlashMintArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IStrategy.sol";
+import "../interfaces/IRegistry.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+
+// Generic flash mint protocol interface
+interface IFlashMintProtocol {
+    function flashMint(uint256 amount, bytes calldata data) external;
+}
+
+contract StrategyFlashMintArbitrage is IStrategy, ReentrancyGuard, Ownable {
+    using SafeERC20 for IERC20;
+
+    address public immutable registry;
+    ISwapRouter public immutable uniswapRouter; // Ruby Exchange (Uniswap V3-compatible)
+    uint256 public constant SLIPPAGE_TOLERANCE = 50; // 0.5% (50 basis points)
+    uint256 public constant MIN_PROFIT_MARGIN = 100; // 1% minimum profit
+    uint24 public constant POOL_FEE = 3000; // Uniswap V3 0.3% fee tier
+    uint256 public constant DEADLINE_EXTENSION = 300; // 5 minutes
+    bool public paused;
+
+    // Supported flash mint tokens and protocols
+    mapping(address => address) public flashMintProtocols; // token => protocol
+    mapping(address => address) public priceFeeds; // token => Chainlink feed
+    address[] public supportedTokens;
+
+    event ArbitrageExecuted(
+        address indexed token,
+        address indexed outputToken,
+        uint256 amountIn,
+        uint256 profit,
+        uint256 timestamp
+    );
+    event TokenAdded(address indexed token, address protocol, address priceFeed);
+    event Paused(bool paused);
+
+    modifier whenNotPaused() {
+        require(!paused, "Strategy paused");
+        _;
+    }
+
+    constructor(
+        address _registry,
+        address _uniswapRouter,
+        address _initialOwner
+    ) Ownable(_initialOwner) {
+        registry = _registry;
+        uniswapRouter = ISwapRouter(_uniswapRouter);
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Flash Mint Arbitrage";
+    }
+
+    // Add supported flash mint token with its protocol and Chainlink price feed
+    function addSupportedToken(address token, address protocol, address priceFeed) external onlyOwner {
+        require(token != address(0) && protocol != address(0) && priceFeed != address(0), "Invalid addresses");
+        require(flashMintProtocols[token] == address(0), "Token already supported");
+        flashMintProtocols[token] = protocol;
+        priceFeeds[token] = priceFeed;
+        supportedTokens.push(token);
+        emit TokenAdded(token, protocol, priceFeed);
+    }
+
+    // Pause or unpause the strategy
+    function setPaused(bool _paused) external onlyOwner {
+        paused = _paused;
+        emit Paused(_paused);
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        // view
+        override
+        whenNotPaused
+        returns (uint256 profit, bytes memory executionData)
+    {
+        // Validate flash mint token
+        address protocol = flashMintProtocols[asset];
+        if (protocol == address(0)) return (0, "");
+
+        address skaleRouter = IRegistry(registry).getAddress("UNISWAP_V3");
+        address weth = IRegistry(registry).getAddress("WETH");
+
+        // Get price for token -> WETH
+        (uint256 wethOut, bool valid) = _getUniswapV3Price(skaleRouter, asset, weth, amount);
+        if (!valid) return (0, "");
+
+        // Get price for WETH -> token
+        (uint256 tokenOut, bool reverseValid) = _getUniswapV3Price(skaleRouter, weth, asset, wethOut);
+        if (!reverseValid) return (0, "");
+
+        // Calculate profit
+        if (tokenOut > amount) {
+            uint256 grossProfit = tokenOut - amount;
+            uint256 gasCost = _estimateGasCost();
+            profit = grossProfit > gasCost ? grossProfit - gasCost : 0;
+            uint256 profitMargin = (profit * 10000) / amount;
+            if (profitMargin >= MIN_PROFIT_MARGIN) {
+                executionData = abi.encode(asset, protocol, weth);
+            }
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        whenNotPaused
+        returns (bool success, bytes memory result, uint256)
+    {
+        (address token, address protocol, address weth) = abi.decode(executionData, (address, address, address));
+        require(flashMintProtocols[token] == protocol, "Invalid protocol");
+        require(priceFeeds[token] != address(0), "Unsupported token");
+
+        // Encode flash mint data
+        bytes memory flashData = abi.encode(token, weth, amount, premium);
+        IFlashMintProtocol(protocol).flashMint(amount, flashData);
+
+        // Verify final balance
+        uint256 finalBalance = IERC20(token).balanceOf(address(this));
+        require(finalBalance >= amount + premium, "Insufficient profit");
+        uint256 profit = finalBalance - amount - premium;
+
+        emit ArbitrageExecuted(token, weth, amount, profit, block.timestamp);
+        success = true;
+        result = abi.encode(token, weth, profit);
+        return (success, result, profit);
+    }
+
+    // Callback for flash mint
+    function onFlashMintCallback(bytes calldata data) external nonReentrant {
+        (address token, address weth, uint256 amount, uint256 premium) = abi.decode(data, (address, address, uint256, uint256));
+        address protocol = flashMintProtocols[token];
+        require(msg.sender == protocol, "Unauthorized caller");
+
+        // Verify flash minted balance
+        IERC20 tokenContract = IERC20(token);
+        require(tokenContract.balanceOf(address(this)) >= amount, "Insufficient flash minted balance");
+
+        // Swap token -> WETH
+        uint256 wethOut = _swapOnSkale(token, weth, amount);
+
+        // Swap WETH -> token
+        uint256 tokenOut = _swapOnSkale(weth, token, wethOut);
+
+        // Repay flash mint (assuming no fee for simplicity)
+        require(tokenOut >= amount + premium, "Insufficient tokens to repay");
+        tokenContract.safeTransfer(protocol, amount);
+
+        // Profit is retained in the contract
+    }
+
+    // Swap on SKALE (Ruby Exchange, Uniswap V3-compatible)
+    function _swapOnSkale(address tokenIn, address tokenOut, uint256 amountIn)
+        internal
+        returns (uint256 amountOut)
+    {
+        IERC20(tokenIn).approve(address(uniswapRouter), amountIn);
+
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
+            fee: POOL_FEE,
+            recipient: address(this),
+            deadline: block.timestamp + DEADLINE_EXTENSION,
+            amountIn: amountIn,
+            amountOutMinimum: (amountIn * (10000 - SLIPPAGE_TOLERANCE)) / 10000,
+            sqrtPriceLimitX96: 0
+        });
+
+        amountOut = uniswapRouter.exactInputSingle(params);
+        IERC20(tokenIn).approve(address(uniswapRouter), 0);
+        require(amountOut > 0, "Swap failed");
+    }
+
+    // Get Uniswap V3 price (simplified, assumes single pool)
+    function _getUniswapV3Price(address router, address tokenIn, address tokenOut, uint256 amountIn)
+        internal
+        // view
+        returns (uint256 amountOut, bool valid)
+    {
+        try uniswapRouter.exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                fee: POOL_FEE,
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: amountIn,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            })
+        ) returns (uint256 out) {
+            amountOut = out;
+            valid = true;
+        } catch {
+            amountOut = 0;
+            valid = false;
+        }
+    }
+
+    // Estimate gas cost (SKALE is gasless, but include for overhead)
+    function _estimateGasCost() internal view returns (uint256) {
+        address ethUsdFeed = IRegistry(registry).getAddress("ETH_USD_FEED");
+        (, int256 ethPrice,,,) = AggregatorV3Interface(ethUsdFeed).latestRoundData();
+        require(ethPrice > 0, "Invalid ETH price");
+        uint256 gasPrice = 0; // SKALE is gasless
+        uint256 gasCostEth = (150_000 * gasPrice) / 1e18; // 150k gas for overhead
+        return (gasCostEth * uint256(ethPrice)) / 1e8; // Convert to USD
+    }
+
+    // Emergency withdraw function
+    function emergencyWithdraw(address token, uint256 amount) external onlyOwner {
+        IERC20(token).safeTransfer(owner(), amount);
+    }
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyCrossDexLendingArbitrage.sol
+---Filename: StrategyCrossDexLendingArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "../interfaces/IAavePool.sol";
+import "../interfaces/ICompound.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+contract StrategyCrossDexLendingArbitrage is IStrategy, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    address public registry;
+
+    constructor(address _registry) {
+        registry = _registry;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "Cross-DEX Lending Arbitrage";
+    }
+
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        address aavePool = IRegistry(registry).getAddress("AAVE_LENDING_POOL");
+        address compound = IRegistry(registry).getAddress("COMPTROLLER");
+
+        (, , , , uint128 aaveBorrowRate, , , , , , , ) = IAavePool(aavePool).getReserveData(asset);
+        uint256 compoundSupplyRate = ICompound(compound).getSupplyRate(asset);
+
+        if (compoundSupplyRate > aaveBorrowRate) {
+            profit = (amount * (compoundSupplyRate - aaveBorrowRate)) / 1e18;
+            executionData = abi.encode(aavePool, compound);
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+    external
+    override
+    nonReentrant
+    returns (bool success, bytes memory result, uint256)
+{
+    (address aavePool, address compound) = abi.decode(executionData, (address, address));
+    // (address borrowProtocol, address lendProtocol) = abi.decode(executionData, (address, address));
+    
+    address asset = IRegistry(registry).getAddress("USDC");
+    address cToken = IRegistry(registry).getAddress("CUSDC");
+
+    // Ensure contract is approved to borrow
+    require(IERC20(asset).balanceOf(address(this)) >= 0, "Invalid initial balance");
+
+    // Borrow from Aave (interestRateMode = 2 for variable rate)
+    IAavePool(aavePool).borrow(asset, amount, 2, 0, address(this));
+
+    // Verify borrowed amount
+    uint256 borrowedBalance = IERC20(asset).balanceOf(address(this));
+    require(borrowedBalance >= amount, "Borrow failed");
+
+    // Supply to Compound V2 (using cToken)
+    // IERC20(asset).forceApprove(borrowProtocol, amount);
+    SafeERC20.forceApprove(IERC20(asset), cToken, amount);
+    require(ICompound(cToken).mint(amount) == 0, "Compound supply failed");
+
+    // Reset approval for safety
+    SafeERC20.forceApprove(IERC20(asset), cToken, 0);
+
+    // Simplified: Return estimated profit
+    uint256 estimatedProfit = amount - premium;
+    require(estimatedProfit > 0, "No profit after premium");
+
+    // return estimatedProfit;
+        // Borrow, lend
+    uint256 profit = estimatedProfit;// Lending APY - borrow APR
+    return (true, abi.encode(asset, profit), profit - premium);
+}
+}---File Content End---
+
+---Path and files name: pmms/strategies/StrategyDexArbitrage.sol
+---Filename: StrategyDexArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IRegistry.sol";
+import "../interfaces/IStrategy.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+
+contract StrategyDexArbitrage is IStrategy {
+    using SafeERC20 for IERC20;
+
+    address public immutable registry;
+    uint256 private constant SLIPPAGE_DENOMINATOR = 10000;
+    uint256 private constant SLIPPAGE_TOLERANCE = 50; // 0.5%
+
+    constructor(address _registry) {
+        require(_registry != address(0), "Invalid registry");
+        registry = _registry;
+    }
+
+    function name() external pure override returns (string memory) {
+        return "DEX Arbitrage";
+    }
+
+    struct DexAddresses {
+        address uniswap;
+        address sushiswap;
+        address weth;
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        DexAddresses memory dex = _getDexAddresses();
+        
+        uint256 uniOut = _getPrice(dex.uniswap, asset, dex.weth, amount);
+        uint256 sushiOut = _getPrice(dex.sushiswap, asset, dex.weth, amount);
+
+        if (uniOut > _applySlippage(sushiOut, true)) {
+            profit = uniOut - sushiOut;
+            executionData = abi.encode(asset, dex.uniswap, dex.sushiswap);
+        } else if (sushiOut > _applySlippage(uniOut, true)) {
+            profit = sushiOut - uniOut;
+            executionData = abi.encode(asset, dex.sushiswap, dex.uniswap);
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        returns (bool, bytes memory, uint256)
+    {
+        (address token, address buyDex, address sellDex) = abi.decode(executionData, (address, address, address));
+        DexAddresses memory dex = _getDexAddresses();
+
+        uint256 receivedAmount = _swapTokens(
+            buyDex,
+            token,
+            dex.weth,
+            amount,
+            _applySlippage(amount, false)
+        );
+
+        uint256 finalAmount = _swapTokens(
+            sellDex,
+            dex.weth,
+            token,
+            receivedAmount,
+            0
+        );
+
+        uint256 profit = finalAmount > amount + premium ? finalAmount - amount - premium : 0;
+        require(profit > 0, "Insufficient profit");
+        
+        return (true, abi.encode(profit), profit);
+    }
+
+    function _getDexAddresses() internal view returns (DexAddresses memory) {
+        return DexAddresses({
+            uniswap: IRegistry(registry).getAddress("UNISWAP_V2"),
+            sushiswap: IRegistry(registry).getAddress("SUSHISWAP"),
+            weth: IRegistry(registry).getAddress("WETH")
+        });
+    }
+
+    function _applySlippage(uint256 amount, bool isPositive) internal pure returns (uint256) {
+        return isPositive 
+            ? (amount * (SLIPPAGE_DENOMINATOR + SLIPPAGE_TOLERANCE)) / SLIPPAGE_DENOMINATOR
+            : (amount * (SLIPPAGE_DENOMINATOR - SLIPPAGE_TOLERANCE)) / SLIPPAGE_DENOMINATOR;
+    }
+
+    function _swapTokens(
+        address router,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 amountOutMin
+    ) internal returns (uint256) {
+        address[] memory path = new address[](2);
+        path[0] = tokenIn;
+        path[1] = tokenOut;
+
+        IERC20(tokenIn).approve(router, amountIn);
+        uint256[] memory amounts = IUniswapV2Router02(router).swapExactTokensForTokens(
+            amountIn,
+            amountOutMin,
+            path,
+            address(this),
+            block.timestamp + 300
+        );
+        IERC20(tokenIn).approve(router, 0);
+        
+        return amounts[1];
+    }
+
+    function _getPrice(address dex, address from, address to, uint256 amountIn)
+        internal
+        view
+        returns (uint256)
+    {
+        address[] memory path = new address[](2);
+        path[0] = from;
+        path[1] = to;
+        uint256[] memory amounts = IUniswapV2Router02(dex).getAmountsOut(amountIn, path);
+        return amounts[1];
+    }
+
+    function withdraw(address token, uint256 amount) external {
+        require(msg.sender == registry, "Only registry can withdraw");
+        IERC20(token).safeTransfer(msg.sender, amount);
+    }
+}---File Content End---
+
+---Path and files name: pmms/utils/ArbitrumSellHandler.sol
+---Filename: ArbitrumSellHandler.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+
+contract ArbitrumSellHandler is ReentrancyGuard, Ownable {
+    using SafeERC20 for IERC20;
+
+    ISwapRouter public immutable uniswapRouter; // Uniswap V3 on Arbitrum
+    address public immutable skaleStrategy; // SKALE strategy contract
+    uint24 public constant POOL_FEE = 3000; // 0.3% fee tier
+    uint256 public constant SLIPPAGE_TOLERANCE = 50; // 0.5%
+    uint256 public constant DEADLINE_EXTENSION = 300; // 5 minutes
+
+    event SellExecuted(address indexed tokenIn, uint256 amountIn, uint256 amountOut, uint256 timestamp);
+
+    constructor(address _uniswapRouter, address _skaleStrategy, address _initialOwner) Ownable(_initialOwner) {
+        uniswapRouter = ISwapRouter(_uniswapRouter);
+        skaleStrategy = _skaleStrategy;
+    }
+
+    // Called by SKALE IMA Bridge or off-chain relayer after bridging
+    function executeSell(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 minAmountOut
+    ) external nonReentrant {
+        // In production, secure this with a signature or bridge authentication
+        require(msg.sender == skaleStrategy, "Unauthorized");
+
+        IERC20(tokenIn).approve(address(uniswapRouter), amountIn);
+
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
+            fee: POOL_FEE,
+            recipient: skaleStrategy, // Send USDC back to SKALE strategy
+            deadline: block.timestamp + DEADLINE_EXTENSION,
+            amountIn: amountIn,
+            amountOutMinimum: minAmountOut,
+            sqrtPriceLimitX96: 0
+        });
+
+        uint256 amountOut = uniswapRouter.exactInputSingle(params);
+        IERC20(tokenIn).approve(address(uniswapRouter), 0);
+
+        emit SellExecuted(tokenIn, amountIn, amountOut, block.timestamp);
+
+        // Bridge USDC back to SKALE
+        // In production, use SKALE IMA Bridge to send USDC back
+    }
+}---File Content End---
+
+---Path and files name: pmms/utils/SafeERC20.sol
+---Filename: SafeERC20.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;---File Content End---
+
+---Path and files name: pmms/utils/StrategyLib.sol
+---Filename: StrategyLib.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+
+library StrategyLib {
+    function swapTokens(
+        address router, 
+        address[] memory path, 
+        uint256 amount, 
+        uint256 minOut
+    ) internal returns (uint256) {
+        uint256 deadline = block.timestamp + 300;
+        IERC20(path[0]).approve(router, amount);
+        uint[] memory amountsOut = IUniswapV2Router02(router).swapExactTokensForTokens(
+            amount,
+            minOut,
+            path,
+            address(this),
+            deadline
+        );
+        return amountsOut[amountsOut.length - 1];
+    }
+
+    function _getPrice(
+        address router, 
+        address tokenIn, 
+        address tokenOut, 
+        uint256 amountIn
+    ) internal view returns (uint256) {
+        address[] memory path = new address[](2);
+        path[0] = tokenIn;
+        path[1] = tokenOut;
+        try IUniswapV2Router02(router).getAmountsOut(amountIn, path) returns (uint[] memory amounts) {
+            return amounts[1];
+        } catch {
+            return 0;
+        }
+    }
+
+    function getOnchainPrice(
+        address tokenUsdFeed
+    ) internal view returns (uint256 price, uint8 decimals) {
+        (, int256 answer,,,) = AggregatorV3Interface(tokenUsdFeed).latestRoundData();
+        decimals = AggregatorV3Interface(tokenUsdFeed).decimals();
+        price = uint256(answer);
+    }
+}---File Content End---
+
+---Path and files name: pmms/interfaces/IAavePool.sol
+---Filename: IAavePool.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface IAavePool {
+    function deposit(
+        address asset,
+        uint256 amount,
+        address onBehalfOf,
+        uint16 referralCode
+    ) external;
+    function withdraw(
+        address asset,
+        uint256 amount,
+        address to
+    ) external returns (uint256);
+
+    function getReserveData(
+        address asset
+    )
+        external
+        view
+        returns (
+            uint256 configuration,
+            uint128 liquidityIndex,
+            uint128 variableBorrowIndex,
+            uint128 currentLiquidityRate,
+            uint128 currentVariableBorrowRate,
+            uint128 currentStableBorrowRate,
+            uint40 lastUpdateTimestamp,
+            address aTokenAddress,
+            address stableDebtTokenAddress,
+            address variableDebtTokenAddress,
+            address interestRateStrategyAddress,
+            uint8 id
+        );
+
+    function borrow(
+    address asset,
+    uint256 amount,
+    uint256 interestRateMode,
+    uint16 referralCode,
+    address onBehalfOf
+    ) external;
+}---File Content End---
+
+---Path and files name: pmms/interfaces/ICompound.sol
+---Filename: ICompound.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface ICompound {
+    function supply(address asset, uint256 amount) external returns (uint256);
+    function getSupplyRate(address asset) external view returns (uint256);
+    function mint(uint256 mintAmount) external returns (uint256);
+    function supplyRatePerBlock() external view returns (uint256);
+}---File Content End---
+
+---Path and files name: pmms/interfaces/ICurvePool.sol
+---Filename: ICurvePool.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface ICurvePool {
+    function exchange(int128 i, int128 j, uint256 dx, uint256 min_dy) external returns (uint256);
+    function add_liquidity(uint256[3] calldata amounts, uint256 min_mint_amount) external returns (uint256);
+    function get_dy(int128 i, int128 j, uint256 dx) external view returns (uint256);
+}---File Content End---
+
+---Path and files name: pmms/interfaces/INftFloorOracle.sol
+---Filename: INftFloorOracle.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface INftFloorOracle {
+    function getFloorPrice(address nftContract) external view returns (uint256);
+}
+---File Content End---
+
+---Path and files name: pmms/interfaces/IStrategy.sol
+---Filename: IStrategy.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface IStrategy {
+    function name() external view returns (string memory);
+    function checkOpportunity(address asset, uint256 amount) external returns (uint256 profit, bytes memory executionData);
+    function execute(bytes memory executionData, uint256 amount, uint256 premium) external returns (bool success, bytes memory result, uint256 finalAmount);
+}---File Content End---
+
+---Path and files name: pmms/interfaces/IRegistry.sol
+---Filename: IRegistry.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface IRegistry {
+    function getAddress(string memory key) external view returns (address);
+    function getNftFloorPrice(address nftContract) external view returns (uint256 floorPrice);
+    function getStrategies() external view returns (address[] memory);
+    function registerStrategy(string calldata name, address strategy) external;
+    function deregisterStrategy(string calldata name) external;
+    function getStrategy(string calldata name) external view returns (address);
+    function getStrategyNames() external view returns (string[] memory);
+}---File Content End---
+
+---Path and files name: pmms/interfaces/IQuoter.sol
+---Filename: IQuoter.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface IQuoter {
+    function quoteExactInputSingle(
+        address tokenIn,
+        address tokenOut,
+        uint24 fee,
+        uint256 amountIn,
+        uint160 sqrtPriceLimitX96
+    ) external returns (uint256 amountOut);
+}---File Content End---
+
+---Path and files name: pmms/interfaces/ISwapRouter.sol
+---Filename: ISwapRouter.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface ISwapRouter {
+    struct ExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint24 fee;
+        address recipient;
+        uint256 deadline;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut);
+}---File Content End---
+
+---Path and files name: pmms/interfaces/IConvexBooster.sol
+---Filename: IConvexBooster.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface IConvexBooster {
+    function deposit(uint256 _pid, uint256 _amount, bool _stake) external returns (bool);
+}---File Content End---
+

@@ -1,0 +1,92 @@
+graph TD
+    subgraph "pmms/"
+        PMM["ProfitMaximizerModularSystem.sol"]
+        FE1_OLD["FlashloanExecutor.sol (Old)"]
+    end
+
+    subgraph "pmms/core/"
+        FE2_NEW["FlashloanExecutor.sol (New)"]
+        SE["StrategyExecutor.sol"]
+        REG["Registry.sol"]
+        SREG["StrategyRegistry.sol"]
+        DI["DeFiStrategies.sol"]
+        SI["StrategyIds.sol"]
+    end
+
+    subgraph "pmms/interfaces/"
+        IS["IStrategy.sol"]
+        IR["IRegistry.sol"]
+        INO["INftFloorOracle.sol"]
+        ICU["ICurvePool.sol"]
+        ICO["IConvexBooster.sol"]
+        ISW["ISwapRouter.sol"]
+        IQU["IQuoter.sol"]
+    end
+
+    subgraph "pmms/strategies/"
+        SYL["StrategyYieldLoop.sol"]
+        SSMPA["StrategyStablecoinMetaProtocolArbitrage.sol"]
+        STA["StrategyTriangularArbitrage.sol"]
+        SSTA["StrategyStakingTokenArbitrage.sol"]
+        SRTA["StrategyRebaseTokenArbitrage.sol"]
+    end
+
+    subgraph "pmms/utils/"
+        SL["StrategyLib.sol"]
+    end
+
+
+    %% Core System Relations
+    PMM --> FE1_OLD : uses
+    PMM --> REG : uses (as `Registry`)
+    PMM --> IS : imports
+
+    FE1_OLD --> IS : imports
+    FE1_OLD --> IR : imports
+
+    FE2_NEW --> SE : uses (delegates execution)
+    FE2_NEW --> IS : imports
+    FE2_NEW --> IR : imports
+
+    SE --> SREG : uses
+    SE --> IS : imports
+    SE --> FE2_NEW : uses (reference to the new FlashloanExecutor)
+
+    REG --> IR : implements
+    REG --> INO : uses
+    REG --> SL : imports (though not directly used in provided snippet)
+
+    SREG --> None
+    DI --> None
+    SI --> None
+
+    %% Strategy Relations
+    SYL --> IS : implements
+    SYL --> IR : uses
+
+    SSMPA --> IS : implements
+    SSMPA --> IR : uses
+    SSMPA --> ICU : uses
+    SSMPA --> ICO : uses
+
+    STA --> IS : implements
+    STA --> IR : uses
+
+    SSTA --> IS : implements
+    SSTA --> IR : uses
+    SSTA --> ISW : uses
+
+    SRTA --> IS : implements
+    SRTA --> IR : uses
+    SRTA --> ISW : uses
+    SRTA --> IQU : uses
+
+    %% Interface and Utils
+    IS --> None
+    IR --> None
+    INO --> None
+    ICU --> None
+    ICO --> None
+    ISW --> None
+    IQU --> None
+    SL --> None

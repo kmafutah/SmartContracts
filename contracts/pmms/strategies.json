@@ -1,0 +1,129 @@
+[
+  {
+    "id": 1,
+    "strategy": "DEX Arbitrage",
+    "description": "Profit from token price discrepancies between decentralised exchanges",
+    "risk": "Low",
+    "notes": "Most basic, usually requires speed and liquidity"
+  },
+  {
+    "id": 2,
+    "strategy": "Aave Liquidation",
+    "description": "Repay undercollateralised debt and receive a discounted asset",
+    "risk": "Medium",
+    "notes": "Requires accurate health factor monitoring; timing-sensitive"
+  },
+  {
+    "id": 3,
+    "strategy": "Yield Loop (Leverage Farming)",
+    "description": "Deposit asset",
+    "risk": " borrow against it",
+    "notes": " redeposit etc., earning net yield,Medium,Profitable if APY > borrow rate; chain-specific opportunities"
+  },
+  {
+    "id": 4,
+    "strategy": "Stablecoin Peg Arbitrage",
+    "description": "Arbitrage when stables (e.g. USDT/USDC/DAI) depeg on one DEX",
+    "risk": "Low",
+    "notes": "Very effective during market stress"
+  },
+  {
+    "id": 5,
+    "strategy": "NFT Floor Arbitrage",
+    "description": "Buy NFT below floor price on one market",
+    "risk": " sell higher on another",
+    "notes": "Medium,Depends on floor oracle and timing"
+  },
+  {
+    "id": 6,
+    "strategy": "Triangular Arbitrage",
+    "description": "e.g.",
+    "risk": " ETH → USDC → DAI → ETH",
+    "notes": "Medium,Use Uniswap/Sushi/Balancer; works when paths are mispriced"
+  },
+  {
+    "id": 7,
+    "strategy": "Cross-DEX Lending Arbitrage",
+    "description": "Borrow from one (low borrow rate)",
+    "risk": " lend on another (high supply rate)",
+    "notes": "High,Use Aave → Compound / Morpho / Euler"
+  },
+  {
+    "id": 8,
+    "strategy": "Governance Arbitrage",
+    "description": "Acquire tokens cheaply before snapshot",
+    "risk": " vote or benefit",
+    "notes": " dump after,High,Timing-critical; mostly DAO-reward based"
+  },
+  {
+    "id": 9,
+    "strategy": "Oracle Lag Arbitrage",
+    "description": "When AMM price deviates before Chainlink updates",
+    "risk": "Low",
+    "notes": "Works especially on smaller tokens"
+  },
+  {
+    "id": 10,
+    "strategy": "Stablecoin Meta-Protocol Arbitrage",
+    "description": "Curve pools (3Pool",
+    "risk": " FraxBP)",
+    "notes": " Meta Pools (Convex/Curve vaults),High,Requires deep Curve/Convex integration"
+  },
+  {
+    "id": 11,
+    "strategy": "Flash-Mint Arbitrage",
+    "description": "Use protocols like FPI",
+    "risk": " AMPL",
+    "notes": " or tokens with built-in mint/redeem,High,Limited to tokens supporting flash mint"
+  },
+  {
+    "id": 12,
+    "strategy": "LP Burn & Arbitrage",
+    "description": "Burn LP tokens to withdraw high value tokens (post-impermanent loss)",
+    "risk": "Medium",
+    "notes": "Time-sensitive post-shock"
+  },
+  {
+    "id": 13,
+    "strategy": "MEV Capture (own mempool node)",
+    "description": "Detect pending tx and front-run for profit",
+    "risk": "Very High",
+    "notes": "Flashbots, RPC control"
+  },
+  {
+    "id": 14,
+    "strategy": "Rebase Token Arbitrage",
+    "description": "e.g. AMPL or OHM forks before and after rebases",
+    "risk": "Medium",
+    "notes": "Oracle + Timing"
+  },
+  {
+    "id": 15,
+    "strategy": "Bridging Latency Arbitrage",
+    "description": "Cross-chain token pricing (e.g.",
+    "risk": " ETH price on Arbitrum vs ETH Mainnet)",
+    "notes": "High,LayerZero, Wormhole"
+  },
+  {
+    "id": 16,
+    "strategy": "NFT Collateral Liquidation",
+    "description": "Instant buyout of undercollateralised NFTs on platforms like BendDAO",
+    "risk": "Medium",
+    "notes": "NFT Pricing Oracle"
+  },
+  {
+    "id": 17,
+    "strategy": "Liquid Staking Token Arbitrage",
+    "description": "Arbitrage between LSTs like stETH",
+    "risk": " rETH",
+    "notes": " cbETH,Medium,Market-dependent"
+  },
+  {
+    "id": 18,
+    "strategy": "Flashloan Gas Arbitrage",
+    "description": "Arbitrage where users overpay for gas",
+    "risk": " refund or resell via bundlers",
+    "notes": "High,Requires bundler and custom RPC"
+  },
+
+]
