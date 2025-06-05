@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.22;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";

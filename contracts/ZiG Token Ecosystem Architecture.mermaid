@@ -1,0 +1,184 @@
+classDiagram
+    direction LR
+
+    class ZiGT {
+        +selectedDirection: StrategicDirection
+        +selectedRatio: ReserveRatio
+        +rebalance()
+        +getPrice(assetKey): uint256
+        +updateStrategy(newStrategy, newRatio)
+        +crossChainMint()
+        +mint()
+        +burn()
+    }
+
+    class ZiGCrossChain {
+        <<abstract>>
+        +DEST_CHAIN_SELECTOR: uint64
+        +i_router: address
+        +_sendCrossChainMessage(receiver, data)
+        +_ccipReceive(message)
+    }
+
+    class ZiGBondingCurve {
+        +totalMinted: uint256
+        +basePrice: UD60x18
+        +calculatePrice(currentSupply): UD60x18
+        +mint(amount)
+        +burn(amount)
+    }
+
+    class ZiGOracleHub {
+        +oracles: mapping<bytes32, OracleConfig>
+        +setOracle(symbol, source, decimals, isCustom, isInverse)
+        +getRate(symbol): (uint256, uint8)
+        +getTriangulatedRate(baseSymbol, quoteSymbol): (uint256, uint8)
+    }
+
+    class IChainlinkAggregator {
+        <<interface>>
+        +latestAnswer(): int256
+        +decimals(): uint8
+    }
+
+    class ReparationsModel {
+        +XAU_WEIGHT: uint256
+        +USD_WEIGHT: uint256
+        +zigtToken: wZiGT
+        +redistributionVault: IRedistributionVault
+        +accessVerifier: AccessVerifier
+        +reparationsDAO: IReparationsDAO
+        +oracleRouter: IOracleRouter
+        +mint(amount)
+        +redeem(amount)
+        +rebalance()
+    }
+
+    class IReparationsDAO {
+        <<interface>>
+        +isAuthorized(caller): bool
+    }
+
+    class IOracleRouter {
+        <<interface>>
+        +getPrice(symbol): (uint256 price, uint8 decimals)
+    }
+
+    class RedistributionVault {
+        +token: IERC20
+        +panAfricanTreasury: address payable
+        +diasporaDevelopmentPool: address payable
+        +historicalRestitutionFund: address payable
+        +distribute()
+        +deposit(amount)
+    }
+
+    class AccessVerifier {
+        +isAfrican: mapping<address, bool>
+        +isDiaspora: mapping<address, bool>
+        +eligibleForReducedFee(user): bool
+    }
+
+    class EthicalGuard {
+        <<abstract>>
+        +redistributionVault: IRedistributionVault
+        +reparationBeforeProfit()
+    }
+
+    class ZiGMemeToken {
+        +faucetAmount: uint256
+        +faucetCooldown: uint256
+        +claimFaucet()
+        +airdrop(recipients, amount)
+    }
+
+    class ZiGGovernanceToken {
+        +treasuryAddress: address
+        +mint(to, amount)
+        +snapshot()
+    }
+
+    class ZiGRWAToken {
+        +assetPartitions: mapping<uint256, AssetInfo>
+        +mintPartition(to, amount, assetType, series, tranche)
+    }
+
+    class ZiGNFT {
+        +nextTokenId: uint256
+        +lazyMints: mapping<uint256, LazyMint>
+        +mint(to, uri)
+        +claimLazyMint(lazyId)
+    }
+
+    class ZiGSoulboundToken {
+        +identities: mapping<uint256, Identity>
+        +mint(to, tribe, language, reparationsLineage)
+    }
+
+    class SoulReparationNFT {
+        +tokenCounter: uint256
+        +checkAndMint(to, metadataURI)
+    }
+
+    class ZiGGameFiToken {
+        +rewardMint(to, amount)
+        +gameBurn(from, amount)
+    }
+
+    class ZiGUtilityToken {
+        +accessUtilityFeature()
+        +payForService(service, fee)
+    }
+
+    class ReparationsDAO {
+        +timelock: address
+        +proposals: mapping<uint256, Proposal>
+        +propose(target, callData, eta)
+        +execute(proposalId)
+    }
+
+
+    ZiGT --|> ZiGCrossChain : extends
+    ZiGT --|> ZiGBondingCurve : extends
+    ZiGT ..> ZiGOracleHub : uses (for price data)
+    ReparationsModel --> ZiGOracleHub : uses (via IOracleRouter)
+    ZiGOracleHub ..|> IChainlinkAggregator : interacts with
+
+    ReparationsModel *-- RedistributionVault : uses
+    ReparationsModel *-- AccessVerifier : uses
+    ReparationsModel ..|> IReparationsDAO : uses
+    ReparationsModel ..|> IOracleRouter : uses
+    ReparationsModel --|> EthicalGuard : extends
+
+    EthicalGuard ..> RedistributionVault : uses
+
+    ZiGMemeToken --|> ERC20
+    ZiGMemeToken --|> Ownable
+
+    ZiGGovernanceToken --|> ERC20Upgradeable
+    ZiGGovernanceToken --|> ERC20VotesUpgradeable
+    ZiGGovernanceToken --|> ERC20PermitUpgradeable
+    ZiGGovernanceToken --|> OwnableUpgradeable
+    ZiGGovernanceToken --|> UUPSUpgradeable
+
+    ZiGRWAToken --|> ERC20
+    ZiGRWAToken --|> Ownable
+
+    ZiGNFT --|> ERC721URIStorage
+    ZiGNFT --|> Ownable
+
+    ZiGSoulboundToken --|> ERC721
+    ZiGSoulboundToken --|> Ownable
+
+    SoulReparationNFT --|> ERC721URIStorage
+    SoulReparationNFT --|> Ownable
+
+    ZiGGameFiToken --|> ERC20
+    ZiGGameFiToken --|> Ownable
+
+    ZiGUtilityToken --|> ERC20
+    ZiGUtilityToken --|> Ownable
+
+    ReparationsDAO --|> OwnableUpgradeable
+    ReparationsDAO --|> Initializable
+    ReparationsDAO --|> ReentrancyGuardUpgradeable

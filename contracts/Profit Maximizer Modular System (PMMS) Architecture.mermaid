@@ -1,0 +1,120 @@
+classDiagram
+    direction LR
+
+    class ProfitMaximizerModularSystem {
+        +registry: Registry
+        +flashloanExecutor: FlashloanExecutor
+        +executeStrategy(name, asset, amount, params)
+        +addStrategy(name, address)
+        +removeStrategy(name)
+        +updateFlashloanExecutor(newExecutor)
+    }
+
+    class Registry {
+        +strategies: mapping<string, address>
+        +addresses: mapping<string, address>
+        +nftFloorOracle: address
+        +registerStrategy(name, strategy)
+        +deregisterStrategy(name)
+        +getStrategy(name): address
+        +getAddress(key): address
+        +getNftFloorPrice(nftContract): uint256
+    }
+
+    class FlashloanExecutor {
+        +executor: StrategyExecutor
+        +addressProvider: IPoolAddressesProvider
+        +pool: IPool
+        +initiateFlashLoan(asset, amount, executionParams)
+        +executeOperation(asset, amount, premium, initiator, params): bool
+        +updateExecutor(newExecutor)
+    }
+
+    class StrategyExecutor {
+        +registry: IRegistry
+        +flashloanExecutor: address
+        +findAndExecute(asset, amount, premium, params): (bool, bytes, uint256)
+        +updateFlashloanExecutor(newExecutor)
+    }
+
+    class IStrategy {
+        <<interface>>
+        +name(): string
+        +checkOpportunity(asset, amount): (uint256 profit, bytes executionData)
+        +execute(executionData, amount, premium): (bool success, bytes result, uint256 finalAmount)
+    }
+
+    class StrategyDexArbitrage {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyYieldLoop {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyStablecoinMetaProtocolArbitrage {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyTriangularArbitrage {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyRebaseTokenArbitrage {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyNFTFloorArbitrage {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyAaveLiquidation {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyFlashloanGasArbitrage {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyGovernanceArbitrage {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyBridgingLatencyArbitrage {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyLPBurnArbitrage {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyNFTCollateralLiquidation {
+        +checkOpportunity()
+        +execute()
+    }
+    class StrategyFlashMintArbitrage {
+        +checkOpportunity()
+        +execute()
+    }
+
+    ProfitMaximizerModularSystem "1" *-- "1" Registry : manages
+    ProfitMaximizerModularSystem "1" *-- "1" FlashloanExecutor : controls
+    FlashloanExecutor "1" *-- "1" StrategyExecutor : delegates to
+    StrategyExecutor "1" --> "1" IRegistry : queries
+    FlashloanExecutor ..> IPoolAddressesProvider : uses
+    FlashloanExecutor ..> IPool : uses
+    StrategyExecutor ..|> IStrategy : implements/uses
+
+    StrategyDexArbitrage ..|> IStrategy
+    StrategyYieldLoop ..|> IStrategy
+    StrategyStablecoinMetaProtocolArbitrage ..|> IStrategy
+    StrategyTriangularArbitrage ..|> IStrategy
+    StrategyRebaseTokenArbitrage ..|> IStrategy
+    StrategyNFTFloorArbitrage ..|> IStrategy
+    StrategyAaveLiquidation ..|> IStrategy
+    StrategyFlashloanGasArbitrage ..|> IStrategy
+    StrategyGovernanceArbitrage ..|> IStrategy
+    StrategyBridgingLatencyArbitrage ..|> IStrategy
+    StrategyLPBurnArbitrage ..|> IStrategy
+    StrategyNFTCollateralLiquidation ..|> IStrategy
+    StrategyFlashMintArbitrage ..|> IStrategy
