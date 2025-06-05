@@ -104,7 +104,7 @@ forge script script/Deploy.s.sol --rpc-url <YOUR_RPC_URL> --private-key <YOUR_PR
 Interact with the deployed contracts using web3 libraries (e.g., Ethers.js, Web3.js) or through a dApp interface. Refer to the individual contract interfaces for specific function calls and parameters.
 
 ## Diagrams
-<img>pmms.png</img>|<img>ZiG.png</img>
+
 Profit Maximizer Modular System (PMMS) Architecture:
 
 ![alt text](./pmms.png "Profit Maximizer Modular System (PMMS) Architecture")
