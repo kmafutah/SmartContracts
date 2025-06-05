@@ -30,8 +30,15 @@ jobs:
         run: npm ci # Use npm ci for clean installs in CI, or npm install
         working-directory: ./frontend
 
+      - name: Configure Git for gh-pages
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        working-directory: ./frontend # Ensure Git commands run in the frontend context if it's a sub-repo clone
+
       - name: Deploy to GitHub Pages
         run: npm run deploy
         working-directory: ./frontend
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This is still good practice to explicitly pass
