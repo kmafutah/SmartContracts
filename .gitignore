@@ -1,0 +1,13 @@
+node_modules
+.env
+dist
+build
+coverage
+out
+.DS_Store
+*.log
+*.lock
+.openzeppelin
+artifacts
+cache
+contracts-dbg
