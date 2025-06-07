@@ -198,3 +198,6 @@ ZiG Token Ecosystem Architecture:
 ## License
 
 The smart contracts in this repository are primarily licensed under `UNLICENSED` or `MIT`, as indicated within each Solidity file[cite: 1, 19, 749, 751, 755, 761, 766, 768, 770, 772, 774, 1518, 1521, 1526, 1530, 1533, 1538, 1540, 1544, 1548, 1554, 1563, 1575, 1577, 1580, 1583, 1587, 1594, 1605, 1617, 1621]. Please check individual file headers for precise licensing information.
+
+## Visitors Count
+<img height="30px" src = "https://profile-counter.glitch.me/kmafutah/count.svg" alt ="Loading">

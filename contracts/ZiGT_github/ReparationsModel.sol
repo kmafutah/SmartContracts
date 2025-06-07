@@ -50,11 +50,6 @@ contract ReparationsModel is Initializable, OwnableUpgradeable, ReentrancyGuardU
     event Rebalanced(uint256 timestamp);
     wZiGT public paymentToken;
 
-    constructor(address _paymentToken, address _zigtToken) {
-        paymentToken = wZiGT(_paymentToken);
-        zigtToken = wZiGT(_zigtToken);
-    }
-
     modifier onlyDAOorTimelock() {
         require(
             msg.sender == address(reparationsDAO) || reparationsDAO.isAuthorized(msg.sender),
@@ -64,23 +59,27 @@ contract ReparationsModel is Initializable, OwnableUpgradeable, ReentrancyGuardU
     }
 
     function initialize(
+        address _paymentToken,
         address _zigtToken,
         address _vault,
         address _verifier,
         address _dao,
         address _oracleRouter
     ) public initializer {
-        __Ownable_init(msg.sender);
+        // __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
-        __EthicalGuard_init(_vault); // Initialize EthicalGuard
+        __EthicalGuard_init(_vault);
+        paymentToken = wZiGT(_paymentToken);
         zigtToken = wZiGT(_zigtToken);
-        redistributionVault = IRedistributionVault(_vault); // Use interface type
+        redistributionVault = IRedistributionVault(_vault);
         accessVerifier = AccessVerifier(_verifier);
         reparationsDAO = IReparationsDAO(_dao);
         oracleRouter = IOracleRouter(_oracleRouter);
         lastRebalance = block.timestamp;
     }
 
+    // Required UUPS upgrade authorization
+    function _authorizeUpgrade(address newImplementation) internal onlyOwner {}
 
     function mint(uint256 amount) external nonReentrant {
         require(amount > 0, "Zero amount");

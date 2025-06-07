@@ -34,7 +34,7 @@ module.exports = {
     sourcify: {
     // Disabled by default
     // Doesn't need an API key
-    enabled: true
+    enabled: false
   },
   networks: {
     // Zero-gas networks
@@ -45,14 +45,14 @@ module.exports = {
       gas: "auto",
       gasPrice: "auto",
       gasMultiplier: 1.5,
-      timeout: 60000, // Longer timeout
+      timeout: 360000, // Longer timeout
     },
     skale_testnet: {
       url: process.env.SKALE_TESTNET_RPC_URL || "https://testnet.skalenodes.com/v1/juicy-low-small-testnet",
       accounts: [process.env.PRIVATE_KEY],
       chainId: process.env.SKALE_TESTNET_CHAIN_ID ? parseInt(process.env.SKALE_TESTNET_CHAIN_ID) : 1444673419,
       gasPrice: 100000000, // 0.1 Gwei (SKALE often uses lower gas)
-      gasMultiplier: 1.2,
+      gasMultiplier: 1.5,
       timeout: 120000
     },
     polygon_zkevm: {
@@ -96,7 +96,7 @@ module.exports = {
       chainId: 31337,
     },
   },
-  etherscan: {
+etherscan: {
     apiKey: {
       mainnet: process.env.ETHERSCAN_API_KEY,
       polygon: process.env.POLYGONSCAN_API_KEY || process.env.ETHERSCAN_API_KEY,

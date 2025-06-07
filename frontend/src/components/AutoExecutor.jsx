@@ -2,8 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
 import { useContract } from '../hooks/useContract';
-// import RegistryABI from '../abi/Registry.json';
-import RegistryABI from '../abi/RegistryVerifiedABI.json';
+import RegistryABI from '../abi/Registry.json';
+// import RegistryABI from '../abi/RegistryVerifiedABI.json';
 
 
 const AutoExecutor = () => {
@@ -123,6 +123,17 @@ const AutoExecutor = () => {
   Check Proxy Implementation
 </button>
 </div>
+<br/>
+<div className="mt-4">
+  <h4 className="text-lg font-semibold mb-2">Available Functions</h4>
+  <ul className="text-sm bg-white border rounded p-3 space-y-1">
+    {registryContract &&
+      Object.keys(registryContract.interface.functions).map((name, i) => (
+        <li key={i} className="font-mono">{name}</li>
+      ))}
+  </ul>
+</div>
+
     </div>
     
   );

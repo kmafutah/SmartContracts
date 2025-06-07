@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Profit Maximizer Modular System (PMMS) - Auto Strategy Execution UI",
   "private": true,
-  "homepage": "https://kmafutah.github.io/SmartContracts/pmms/",
+  "homepage": "https://kmafutah.github.io/SmartContracts/",
   "type": "module",
   "scripts": {
     "dev": "vite",

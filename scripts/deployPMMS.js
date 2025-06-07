@@ -70,10 +70,16 @@ async function main() {
     console.log(`🔐 Deploying on ${network} as: ${deployer.address}`);
 
     // Configure deployment settings
+    // const deploymentConfig = {
+    //   gasOverrides: useMock ? {
+    //     gasLimit: 8000000,
+    //     gasPrice: ethers.parseUnits("100", "gwei")
+    //   } : {}
+    // };
+    // Configure deployment settings
     const deploymentConfig = {
-      gasOverrides: useMock ? {
-        gasLimit: 8000000,
-        gasPrice: ethers.parseUnits("100", "gwei")
+      gasOverrides: useMock ? { 
+        gasPrice: 0  // SKALE chains have 0 gas price
       } : {}
     };
 

@@ -8,9 +8,15 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-contract ZiGBondingCurve is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+abstract contract ZiGBondingCurve is Initializable, OwnableUpgradeable {
     using {unwrap} for UD60x18;
-    
+    function __ZiGBondingCurve_init() internal onlyInitializing {
+        __ZiGBondingCurve_init_unchained();
+    }
+
+    function __ZiGBondingCurve_init_unchained() internal onlyInitializing {
+        // Initialization logic
+    }    
     string public constant version = "1.0.0";
     uint256 public totalMinted;
     address public __governance; // Added governance variable
@@ -37,7 +43,6 @@ contract ZiGBondingCurve is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     function initialize(address _governance) public virtual initializer {
         __Ownable_init(msg.sender);
-        __UUPSUpgradeable_init();
         
         __governance = _governance;
         // Initialize default values
@@ -125,5 +130,5 @@ contract ZiGBondingCurve is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         emit Burned(msg.sender, amount, refund);
     }
 
-    function _authorizeUpgrade(address newImplementation) internal virtual override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal virtual onlyOwner {}
 }

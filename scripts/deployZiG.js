@@ -83,6 +83,7 @@ async function main() {
   // Core Infrastructure
   console.log("🔨 Deploying Core Infrastructure...");
   deployedContracts.FeedRegistry = await deployContract("FeedRegistry");
+  deployedContracts.BandFeedRegistry = await deployContract("BandFeedRegistry");
   deployedContracts.AccessVerifier = await deployContract("AccessVerifier", [], true);
   deployedContracts.GovernanceToken = await deployContract("ZiGGovernanceToken", [
     deployer.address,
@@ -96,15 +97,19 @@ async function main() {
     deployer.address,
     DEPLOYMENT_PARAMS.MIN_REDISTRIBUTION_SHARE
   ], true);
+  
+  deployedContracts.OracleHub = await deployContract("ZiGOracleHub", [deployer.address]);
+  deployedContracts.ReparationsDAO = await deployContract("ReparationsDAO", [], true);
+  deployedContracts.EthicalGuard = await deployContract("EthicalGuardImpl", [deployedContracts.RedistributionVault], true);  
 
-  // Main ZiGT Token
-  console.log("\n🪙 Deploying Main ZiGT Token...");
-  deployedContracts.MainZiGT = await deployZiGTToken(
-    "ZiG Reparations Token",
-    "ZiG-R",
-    STRATEGIC_DIRECTION.ReparationsModel,
-    { metals: 6000, fiat: 3000, crypto: 1000 }
-  );
+  deployedContracts.ReparationsModel = await deployContract("ReparationsModel", [
+      contracts.MainZiGT,  // zigtToken
+      contracts.RedistributionVault,  // vault
+      contracts.AccessVerifier,  // verifier
+      contracts.ReparationsDAO,  // dao
+      contracts.OracleHub  // oracleRouter
+  ], true);
+
 
   // Governance System
   console.log("\n🏛️ Deploying Governance System...");
@@ -114,6 +119,18 @@ async function main() {
     "ZGTGOV",
     "1.0"
   ]);
+
+  // Main ZiGT Token
+  console.log("\n🪙 Deploying Main ZiGT Token...");
+  // const ratio = { metals: 6000, fiat: 3000, crypto: 1000 };
+  deployedContracts.MainZiGT = await deployZiGTToken(
+    "ZiG Reparations Token",
+    "ZiG-R",
+    STRATEGIC_DIRECTION.ReparationsModel,
+    { metals: 6000, fiat: 3000, crypto: 1000 },
+    deployedContracts.ZiGGovernance,
+    deployedContracts.BandFeedRegistry
+  );
 
   // Strategic Variants
   console.log("\n🔄 Deploying Strategic Variants...");
@@ -125,7 +142,7 @@ async function main() {
   ];
 
   for (const { name, symbol, strategy, ratio } of strategies) {
-    deployedContracts[symbol] = await deployZiGTToken(name, symbol, strategy, ratio);
+    deployedContracts[symbol] = await deployZiGTToken(name, symbol, strategy, ratio, deployedContracts.ZiGGovernance,deployedContracts.BandFeedRegistry);
   }
 
   // Ecosystem Tokens
@@ -139,6 +156,8 @@ async function main() {
   deployedContracts.ZiGSoulboundToken = await deployContract("ZiGSoulboundToken", [deployer.address]);
   deployedContracts.ZiGGameFiToken = await deployContract("ZiGGameFiToken", [TOKEN_SUPPLIES.GAMEFI]);
 
+  deployedContracts.SoulReparationNFT = await deployContract("SoulReparationNFT", [deployer.address]);
+  deployedContracts.ZiGRWAToken = await deployContract("ZiGRWAToken", [TOKEN_SUPPLIES.RWA]);
   // Initialize Ecosystem
   console.log("\n⚙️ Initializing Ecosystem...");
   await initializeEcosystem(deployedContracts, deployer.address);
@@ -195,38 +214,99 @@ async function deployContract(contractName, args = [], isUpgradeable = false) {
 
 async function verifyContract(address, contractName, args, isUpgradeable) {
   try {
-    console.log(`🔍 Verifying ${contractName}...`);
-    await hre.run("verify:verify", {
-      address: address,
-      constructorArguments: isUpgradeable ? [] : args,
-    });
-    console.log(`✅ Verified ${contractName}`);
-  } catch (verifyError) {
-    console.warn(`⚠️ Verification failed for ${contractName}:`, verifyError.message);
+    if (isUpgradeable) {
+      // For UUPS proxies, verify the implementation
+      const impl = await upgrades.erc1967.getImplementationAddress(address);
+      await hre.run("verify:verify", { address: impl });
+    } else {
+      await hre.run("verify:verify", { address, constructorArguments: args });
+    }
+  } catch (error) {
+    console.warn(`Verification failed for ${contractName}:`, error.message);
   }
 }
 
-async function deployZiGTToken(name, symbol, strategy, ratio) {
-  const { contract, address } = await deployContract("ZiGT", [
+// async function deployZiGTToken(name, symbol, strategy, ratio, governance, bandfeeder) {
+//   const { contract, address } = await deployContract("ZiGT", [
+//     process.env.ROUTER_ADDRESS,
+//     bandfeeder.address, 
+//     governance.address,
+//     strategy,
+//     ratio
+//   ]);
+  
+//   try {
+//     if (typeof contract.initialize === 'function') {
+//       await contract.initialize(strategy);
+//       console.log(`⚡ Initialized ${symbol}`);
+//     }
+//   } catch (initError) {
+//     console.warn(`⚠️ Initialization failed for ${symbol}:`, initError.message);
+//   }
+  
+//   return address;
+// }
+// async function deployZiGTToken(name, symbol, strategy, ratio, governance, bandfeeder) {
+//   console.log(`\n📦 Deploying ZiGT Token: ${name} (${symbol})...`);
+
+//   const Factory = await ethers.getContractFactory("ZiGT");
+//   const zigt = await upgrades.deployProxy(Factory, [
+//     process.env.ROUTER_ADDRESS,
+//     bandfeeder,
+//     governance,
+//     strategy,
+//     ratio
+//   ], {
+//     kind: 'uups',
+//     timeout: 120000
+//   });
+
+//   try {
+//     if (typeof zigt.initialize === 'function') {
+//       await zigt.initialize(strategy);
+//       console.log(`⚡ Initialized ${symbol}`);
+//     }
+//   } catch (initError) {
+//     console.warn(`⚠️ Initialization failed for ${symbol}:`, initError.message);
+//   }
+//   await zigt.waitForDeployment();
+//   const address = await zigt.getAddress();
+  
+//   console.log(`✅ ${symbol} deployed to: ${address}`);
+//   return address;
+// }
+async function deployZiGTToken(name, symbol, strategy, ratio, governance, bandfeeder) {
+  console.log(`\n📦 Deploying ZiGT Token: ${name} (${symbol})...`);
+
+  const Factory = await ethers.getContractFactory("ZiGT");
+
+  // Define the arguments for the initialize function
+  const initializerArgs = [
     process.env.ROUTER_ADDRESS,
-    deployer.address,
-    deployer.address,
+    bandfeeder,
+    governance, // This will be used as initialGovernance in ZiGCrossChain
     strategy,
     ratio
-  ]);
-  
-  try {
-    if (typeof contract.initialize === 'function') {
-      await contract.initialize(strategy);
-      console.log(`⚡ Initialized ${symbol}`);
-    }
-  } catch (initError) {
-    console.warn(`⚠️ Initialization failed for ${symbol}:`, initError.message);
-  }
-  
+  ];
+
+  // Define the initializer signature
+  // Based on ZiGT.sol: initialize(address,address,address,StrategicDirection,ReserveRatio)
+  // StrategicDirection (enum) is a uint8 in Solidity, and ReserveRatio (struct) is encoded as its members.
+  // So the signature will look like: initialize(address,address,address,uint8,(uint256,uint256,uint256))
+  const initializerSignature = "initialize(address,address,address,uint8,(uint256,uint256,uint256))";
+
+  const zigt = await upgrades.deployProxy(Factory, initializerArgs, {
+    kind: 'uups',
+    timeout: 120000,
+    initializer: initializerSignature // <--- Add this line
+  });
+
+  await zigt.waitForDeployment();
+  const address = await zigt.getAddress();
+
+  console.log(`✅ ${symbol} deployed to: ${address}`);
   return address;
 }
-
 async function initializeEcosystem(contracts, deployer) {
   try {
     const mainZiGT = await ethers.getContractAt("ZiGT", contracts.MainZiGT);
@@ -234,9 +314,24 @@ async function initializeEcosystem(contracts, deployer) {
     const accessVerifier = await ethers.getContractAt("AccessVerifier", contracts.AccessVerifier);
     const govToken = await ethers.getContractAt("ZiGGovernanceToken", contracts.GovernanceToken);
 
-    await mainZiGT.setReparationsModel(contracts.RedistributionVault);
+
+    
+    // Set up ReparationsModel
+    const reparationsModel = await ethers.getContractAt("ReparationsModel", contracts.ReparationsModel);
+    await reparationsModel.initialize(
+      contracts.MainZiGT,
+      contracts.RedistributionVault,
+      contracts.AccessVerifier,
+      contracts.ReparationsDAO,
+      contracts.OracleHub
+    );    
+
     await accessVerifier.setAfrican(deployer, true);
     await govToken.mint(deployer, DEPLOYMENT_PARAMS.GOVERNANCE_MINT_AMOUNT);
+      // Set up DAO
+    const dao = await ethers.getContractAt("ReparationsDAO", contracts.ReparationsDAO);
+    await dao.setTimelock(deployer.address);
+    await dao.setAuthorized(deployer.address, true);  
     
     console.log("✅ Ecosystem initialized successfully");
   } catch (error) {

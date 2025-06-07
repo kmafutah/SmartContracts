@@ -1,0 +1,60 @@
+---Path and files name: zigt_stablecoin_v5/core/ZiGAccessVerifier.sol
+---Filename: ZiGAccessVerifier.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/core/ZiGT.sol
+---Filename: ZiGT.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/core/ZiGTVariant.sol
+---Filename: ZiGTVariant.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/crosschain/ZiGCrossChainBridge.sol
+---Filename: ZiGCrossChainBridge.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/oracle/BandOracleAdapter.sol
+---Filename: BandOracleAdapter.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/oracle/FeedRegistry.sol
+---Filename: FeedRegistry.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/oracle/FallbackOracle.sol
+---Filename: FallbackOracle.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/logic/ReparationsModel.sol
+---Filename: ReparationsModel.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/logic/ZiGBondingCurve.sol
+---Filename: ZiGBondingCurve.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/governance/ZiGGovernance.sol
+---Filename: ZiGGovernance.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/treasury/ReparationsModel.sol
+---Filename: ReparationsModel.sol
+---File Content Start---
+---File Content End---
+
+---Path and files name: zigt_stablecoin_v5/treasury/ZiGTReserveManager.sol
+---Filename: ZiGTReserveManager.sol
+---File Content Start---
+---File Content End---
+

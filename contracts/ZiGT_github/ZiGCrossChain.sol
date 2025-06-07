@@ -7,7 +7,17 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-abstract contract ZiGCrossChain is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+abstract contract ZiGCrossChain is Initializable, OwnableUpgradeable {
+    function __ZiGCrossChain_init(address ccipRouter, address initialOwner) internal onlyInitializing {
+        __Ownable_init(initialOwner);
+        __ZiGCrossChain_init_unchained(ccipRouter);
+    }
+
+    function __ZiGCrossChain_init_unchained(address ccipRouter) internal onlyInitializing {
+        require(ccipRouter != address(0), "Invalid router address");
+        routerAddress = ccipRouter;
+        i_router = routerAddress;
+    }    
     uint64 public constant DEST_CHAIN_SELECTOR = 16015286601757825753;
     address public i_router;
     event MessageSent(bytes32 messageId);
@@ -23,12 +33,11 @@ abstract contract ZiGCrossChain is Initializable, UUPSUpgradeable, OwnableUpgrad
         require(ccipRouter != address(0), "Invalid router address");
         require(initialOwner != address(0), "Invalid owner address");
         __Ownable_init(initialOwner);
-        __UUPSUpgradeable_init();
         routerAddress = ccipRouter;
         i_router = routerAddress;
     }
 
-    function _authorizeUpgrade(address newImplementation) internal virtual override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal virtual onlyOwner {}
 
 
     // Send cross-chain message

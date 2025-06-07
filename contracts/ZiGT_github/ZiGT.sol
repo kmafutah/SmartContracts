@@ -40,8 +40,15 @@ interface IBandStdReference {
 interface IBandFeedRegistry {
     function getFeedAddress(string memory assetPair) external view returns (address);
 }
-
-contract ZiGT is Initializable, UUPSUpgradeable, OwnableUpgradeable, ZiGBondingCurve, ERC20Upgradeable, ReentrancyGuardUpgradeable, ZiGCrossChain {
+    
+contract ZiGT is 
+    Initializable,
+    ERC20Upgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable,
+    ZiGCrossChain,
+    ZiGBondingCurve
+{
     address public governance;
     address public pendingGovernance;
     address public bandFeedRegistry;
@@ -77,36 +84,37 @@ contract ZiGT is Initializable, UUPSUpgradeable, OwnableUpgradeable, ZiGBondingC
         _;
     }
 
-    constructor() initializer {
-        // Empty constructor for upgradeability
-        // All initialization happens in initialize()
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
     }
 
-    function initialize(
-        address ccipRouter,
-        address bandFeedRegistry_,
-        address initialGovernance,
-        StrategicDirection direction,
-        ReserveRatio memory ratio
-    ) public initializer {
-        __UUPSUpgradeable_init();
-        __ERC20_init("Mansa's Mbizo Yzuri Refu Tano", unicode"₥MYRT");
-        __ReentrancyGuard_init();
-        __Ownable_init(initialGovernance);
-         super.initialize(ccipRouter, initialGovernance);
+function initialize(
+    address ccipRouter,
+    address bandFeedRegistry_,
+    address initialGovernance,
+    StrategicDirection direction,
+    ReserveRatio memory ratio
+) public initializer {
+    // Initialize parent contracts in correct linearized order
+    __ERC20_init("Mansa's Mbizo Yzuri Refu Tano", unicode"₥MYRT");
+    __ReentrancyGuard_init();
+    __UUPSUpgradeable_init();
+    __ZiGCrossChain_init(ccipRouter, initialGovernance); // Add this line
+    __ZiGBondingCurve_init();
 
-        require(bandFeedRegistry_ != address(0), "Invalid registry address");
-        bandFeedRegistry = bandFeedRegistry_;
-        governance = initialGovernance;
-        selectedDirection = direction;
-        selectedRatio = ratio;
-        rebalanceCooldown = 7 days;
-        feePercentage = 100;
-        
-        _setupOracles(direction);
-        emit ConfigurationUpdated(direction, ratio);
-        emit BandFeedRegistrySet(bandFeedRegistry_);
-    }
+    require(bandFeedRegistry_ != address(0), "Invalid registry address");
+    bandFeedRegistry = bandFeedRegistry_;
+    governance = initialGovernance;
+    selectedDirection = direction;
+    selectedRatio = ratio;
+    rebalanceCooldown = 7 days;
+    feePercentage = 100;
+    
+    _setupOracles(direction);
+    emit ConfigurationUpdated(direction, ratio);
+    emit BandFeedRegistrySet(bandFeedRegistry_);
+}
 
     function setOracle(bytes32 assetKey, OracleConfig memory config) external onlyGovernance {
         require(
