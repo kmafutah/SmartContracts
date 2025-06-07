@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./RedistributionVault.sol";
 import "./AccessVerifier.sol";
 import "./EthicalGuard.sol";
@@ -17,7 +18,13 @@ interface IOracleRouter {
     function getPrice(string calldata symbol) external view returns (uint256 price, uint8 decimals);
 }
 
-contract ReparationsModel is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, EthicalGuard {
+contract ReparationsModel is 
+    Initializable,
+    UUPSUpgradeable,
+    ReentrancyGuardUpgradeable,
+    OwnableUpgradeable,
+    EthicalGuard
+{
     // Asset symbols
     string public constant XAU = "XAU";
     string public constant USD = "USD";
@@ -66,9 +73,10 @@ contract ReparationsModel is Initializable, OwnableUpgradeable, ReentrancyGuardU
         address _dao,
         address _oracleRouter
     ) public initializer {
-        // __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
+        // __Ownable_init(msg.sender);
         __EthicalGuard_init(_vault);
+        
         paymentToken = wZiGT(_paymentToken);
         zigtToken = wZiGT(_zigtToken);
         redistributionVault = IRedistributionVault(_vault);
@@ -78,8 +86,9 @@ contract ReparationsModel is Initializable, OwnableUpgradeable, ReentrancyGuardU
         lastRebalance = block.timestamp;
     }
 
+
     // Required UUPS upgrade authorization
-    function _authorizeUpgrade(address newImplementation) internal onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     function mint(uint256 amount) external nonReentrant {
         require(amount > 0, "Zero amount");

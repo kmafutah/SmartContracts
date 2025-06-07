@@ -5,6 +5,7 @@ This repository contains two distinct yet potentially complementary sets of Soli
 ## 1. Profit Maximizer Modular System (PMMS)
 
 The Profit Maximizer Modular System (PMMS) is a sophisticated framework designed for executing various profit-generating strategies on EVM-compatible blockchains, primarily utilizing flash loans. Its modular architecture allows for the easy integration and deployment of diverse arbitrage, yield, and optimization strategies.
+![alt text](./ether_king.png "Profit Maximizer Modular System (PMMS) Architecture")
 
 ### Key Components
 
@@ -37,6 +38,8 @@ The system is designed to interact with prominent DeFi protocols, as demonstrate
 ## 2. ZiG Token Ecosystem
 
 The ZiG Token Ecosystem comprises a set of contracts defining a unique tokenomics model, an oracle hub, and a meme token.
+
+![alt text](./ZimbabweanGoldTetherCoinDesign.png "ZiG Token Ecosystem")
 
 ### Key Components
 

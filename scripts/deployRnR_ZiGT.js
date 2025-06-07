@@ -89,23 +89,34 @@ async function main() {
     deployedContracts.BandFeedRegistry
   );
   
+  // Strategic Variants
+  console.log("\n🔄 Deploying Strategic Variants...");
+  const strategies = [
+    { name: "ZiG Stablecoin", symbol: "ZiG-S", strategy: STRATEGIC_DIRECTION.ZiGMirrorModel, ratio: { metals: 5000, fiat: 4000, crypto: 1000 } },
+    { name: "Stability-Oriented ZiG", symbol: "ZiG-SO", strategy: STRATEGIC_DIRECTION.Famous8PlusZAR, ratio: { metals: 6000, fiat: 3000, crypto: 1000 } },
+    { name: "Digital Forward ZiG", symbol: "ZiG-DF", strategy: STRATEGIC_DIRECTION.Famous8PlusZAR, ratio: { metals: 4000, fiat: 3000, crypto: 3000 } },
+    { name: "Afro-Centric ZiG", symbol: "ZiG-AC", strategy: STRATEGIC_DIRECTION.Famous8PlusZAR, ratio: { metals: 5500, fiat: 2500, crypto: 2000 } }
+  ];
+
+  for (const { name, symbol, strategy, ratio } of strategies) {
+    deployedContracts[symbol] = await deployZiGTToken(name, symbol, strategy, ratio, deployedContracts.ZiGGovernance,deployedContracts.BandFeedRegistry);
+  }
+
 // 2.2 Reparations Model
 // For upgradeable version:
+// console.log("Payment Token deployed to:", await paymentToken.getAddress());
+// console.log("ZiGT Token deployed to:", await zigtToken.getAddress());
 deployedContracts.ReparationsModel = await deployContract(
   "ReparationsModel",
-  [], // NO constructor args for proxy
+  [
+    await deployedContracts.MainZiGT.getAddress(),         // paymentToken
+    await deployedContracts.MainZiGT.getAddress(),         // zigtToken
+    deployedContracts.RedistributionVault, // vault
+    deployedContracts.AccessVerifier,   // verifier
+    deployedContracts.ReparationsDAO,   // dao
+    deployedContracts.OracleHub         // oracleRouter
+  ],
   true // isUpgradeable
-);
-
-// Then initialize with ALL parameters:
-const reparationsModel = await ethers.getContractAt("ReparationsModel", deployedContracts.ReparationsModel);
-await reparationsModel.initialize(
-  deployedContracts.MainZiGT, // paymentToken
-  deployedContracts.MainZiGT, // zigtToken
-  deployedContracts.RedistributionVault, // vault
-  deployedContracts.AccessVerifier, // verifier
-  deployedContracts.ReparationsDAO, // dao
-  deployedContracts.OracleHub // oracleRouter
 );
 
 
@@ -303,6 +314,10 @@ async function deployZiGTToken(name, symbol, strategy, ratio, governance, bandfe
   const address = await zigt.getAddress();
 
   console.log(`✅ ${symbol} deployed to: ${address}`);
+    // Verification (skip for local networks)
+  if (network.name !== 'hardhat') {
+    await verifyWithRetry(address, name, initializerArgs, true);
+  }
   return zigt;
 }
 

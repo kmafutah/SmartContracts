@@ -1,7 +1,7 @@
 {
   "_format": "hh-sol-artifact-1",
   "contractName": "IRouterClient",
-  "sourceName": "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IRouterClient.sol",
+  "sourceName": "@chainlink/contracts-ccip/contracts/interfaces/IRouterClient.sol",
   "abi": [
     {
       "inputs": [],

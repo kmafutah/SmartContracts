@@ -6,8 +6,8 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
-import "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
-import "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IAny2EVMMessageReceiver.sol";
+import "@chainlink/contracts-ccip/contracts/applications/CCIPReceiver.sol";
+import "@chainlink/contracts-ccip/contracts/interfaces/IAny2EVMMessageReceiver.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract ZiGGovernance is ERC20Votes, CCIPReceiver {

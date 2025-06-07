@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-import "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
-import "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IRouterClient.sol";
+import "@chainlink/contracts-ccip/contracts/applications/CCIPReceiver.sol";
+import "@chainlink/contracts-ccip/contracts/interfaces/IRouterClient.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
