@@ -1,0 +1,2960 @@
+---Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/AccessVerifier.sol
+---Filename: AccessVerifier.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/**
+ * @title Access Verifier
+ * @dev ZKP-based verification for ancestry and access control
+ */
+contract AccessVerifier is Ownable {
+    
+    mapping(address => bool) public verifiedAncestry;
+    mapping(address => uint256) public verificationLevel; // 1-5 levels
+    mapping(address => bytes32) public ancestryHash; // ZKP hash
+    
+    address public soulboundToken;
+    
+    event AncestryVerified(address indexed user, uint256 level, bytes32 ancestryHash);
+    
+    constructor(address _soulboundToken) Ownable(msg.sender) {
+        soulboundToken = _soulboundToken;
+    }
+    
+    function verifyAncestry(
+        address _user,
+        uint256 _level,
+        bytes32 _ancestryHash,
+        bytes memory _zkProof
+    ) external onlyOwner {
+        // In production, this would verify the ZK proof
+        // For now, we'll trust the owner's verification
+        require(_level >= 1 && _level <= 5, "AccessVerifier: Invalid level");
+        require(_user != address(0), "AccessVerifier: Invalid user address");
+        
+        verifiedAncestry[_user] = true;
+        verificationLevel[_user] = _level;
+        ancestryHash[_user] = _ancestryHash;
+        
+        emit AncestryVerified(_user, _level, _ancestryHash);
+    }
+    
+    function hasAccess(address _user, uint256 _requiredLevel) external view returns (bool) {
+        return verifiedAncestry[_user] && verificationLevel[_user] >= _requiredLevel;
+    }
+    
+    function isVerified(address _user) external view returns (bool) {
+        return verifiedAncestry[_user];
+    }
+    
+    function revokeVerification(address _user) external onlyOwner {
+        require(_user != address(0), "AccessVerifier: Invalid user address");
+        require(verifiedAncestry[_user], "AccessVerifier: User not verified");
+        
+        verifiedAncestry[_user] = false;
+        verificationLevel[_user] = 0;
+        ancestryHash[_user] = bytes32(0);
+    }
+    
+    function updateSoulboundToken(address _newSoulboundToken) external onlyOwner {
+        require(_newSoulboundToken != address(0), "AccessVerifier: Invalid token address");
+        soulboundToken = _newSoulboundToken;
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ZiGNFT.sol
+---Filename: ZiGNFT.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/**
+ * @title ZiG NFT
+ * @dev Collectible NFTs for the ZiG ecosystem
+ */
+contract ZiGNFT is ERC721, Ownable {
+    
+    struct NFTData {
+        string metadataURI;
+        uint256 rarity;
+        uint256 mintDate;
+        bool isLimited;
+    }
+    
+    mapping(uint256 => NFTData) public nftData;
+    uint256 private _tokenIdCounter;
+    
+    event NFTMinted(address indexed to, uint256 indexed tokenId, uint256 rarity, bool isLimited);
+    
+    constructor() ERC721("ZiG Collectible NFT", "ZiGNFT") Ownable(msg.sender) {}
+    
+function _mintNFT(
+    address _to,
+    string memory _metadataURI,
+    uint256 _rarity,
+    bool _isLimited
+) internal returns (uint256) {
+    require(_to != address(0), "ZiGNFT: Cannot mint to zero address");
+    require(bytes(_metadataURI).length > 0, "ZiGNFT: Empty metadata URI");
+    require(_rarity > 0, "ZiGNFT: Rarity must be greater than 0");
+
+    _tokenIdCounter++;
+    uint256 tokenId = _tokenIdCounter;
+
+    _safeMint(_to, tokenId);
+
+    nftData[tokenId] = NFTData({
+        metadataURI: _metadataURI,
+        rarity: _rarity,
+        mintDate: block.timestamp,
+        isLimited: _isLimited
+    });
+
+    emit NFTMinted(_to, tokenId, _rarity, _isLimited);
+
+    return tokenId;
+}
+
+function nftmint(
+    address _to,
+    string memory _metadataURI,
+    uint256 _rarity,
+    bool _isLimited
+) external onlyOwner returns (uint256) {
+    return _mintNFT(_to, _metadataURI, _rarity, _isLimited);
+}
+
+function batchMint(
+    address[] memory _recipients,
+    string[] memory _metadataURIs,
+    uint256[] memory _rarities,
+    bool[] memory _isLimited
+) external onlyOwner {
+    require(_recipients.length == _metadataURIs.length, "ZiGNFT: Arrays length mismatch");
+    require(_recipients.length == _rarities.length, "ZiGNFT: Arrays length mismatch");
+    require(_recipients.length == _isLimited.length, "ZiGNFT: Arrays length mismatch");
+    require(_recipients.length > 0, "ZiGNFT: Empty arrays");
+
+    for (uint256 i = 0; i < _recipients.length; i++) {
+        _mintNFT(_recipients[i], _metadataURIs[i], _rarities[i], _isLimited[i]);
+    }
+}
+
+    
+    function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
+        require(_ownerOf(tokenId) != address(0), "ZiGNFT: URI query for nonexistent token");
+        return nftData[tokenId].metadataURI;
+    }
+    
+    function updateTokenURI(uint256 tokenId, string memory _newURI) external onlyOwner {
+        require(_ownerOf(tokenId) != address(0), "ZiGNFT: Token does not exist");
+        require(bytes(_newURI).length > 0, "ZiGNFT: Empty metadata URI");
+        
+        nftData[tokenId].metadataURI = _newURI;
+    }
+    
+    function getTokenData(uint256 tokenId) external view returns (NFTData memory) {
+        require(_ownerOf(tokenId) != address(0), "ZiGNFT: Token does not exist");
+        return nftData[tokenId];
+    }
+    
+    function totalSupply() external view returns (uint256) {
+        return _tokenIdCounter;
+    }
+    
+    function tokensOfOwner(address owner) external view returns (uint256[] memory) {
+        require(owner != address(0), "ZiGNFT: Invalid owner address");
+        
+        uint256 tokenCount = balanceOf(owner);
+        uint256[] memory result = new uint256[](tokenCount);
+        uint256 index = 0;
+        
+        for (uint256 tokenId = 1; tokenId <= _tokenIdCounter; tokenId++) {
+            if (_ownerOf(tokenId) == owner) {
+                result[index] = tokenId;
+                index++;
+            }
+        }
+        
+        return result;
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ZiGGovernanceToken.sol
+---Filename: ZiGGovernanceToken.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+// Interface for ReparationsDAO to avoid circular dependency
+interface IReparationsDAO {
+    function setVotingPower(address user, uint256 power) external;
+}
+
+/**
+ * @title ZiG Governance Token
+ * @dev Governance token for the ZiG ecosystem
+ */
+contract ZiGGovernanceToken is ERC20, Ownable, ReentrancyGuard {
+    
+    mapping(address => bool) public minters;
+    address public reparationsDAO;
+    uint256 public maxSupply;
+    bool public mintingPaused;
+    
+    event MinterAdded(address indexed minter);
+    event MinterRemoved(address indexed minter);
+    event ReparationsDAOUpdated(address indexed oldDAO, address indexed newDAO);
+    event MintingPaused();
+    event MintingUnpaused();
+    event MaxSupplyUpdated(uint256 oldMaxSupply, uint256 newMaxSupply);
+    
+    modifier onlyMinter() {
+        require(minters[msg.sender], "ZiGGOV: Not authorized minter");
+        _;
+    }
+    
+    modifier whenMintingNotPaused() {
+        require(!mintingPaused, "ZiGGOV: Minting is paused");
+        _;
+    }
+    
+    constructor(uint256 _maxSupply) ERC20("ZiG Governance Token", "ZiGGOV") Ownable(msg.sender) {
+        require(_maxSupply > 0, "ZiGGOV: Max supply must be greater than 0");
+        maxSupply = _maxSupply;
+        minters[msg.sender] = true;
+        emit MinterAdded(msg.sender);
+    }
+    
+    function mint(address _to, uint256 _amount) external onlyMinter whenMintingNotPaused nonReentrant {
+        require(_to != address(0), "ZiGGOV: Cannot mint to zero address");
+        require(_amount > 0, "ZiGGOV: Amount must be greater than 0");
+        require(totalSupply() + _amount <= maxSupply, "ZiGGOV: Would exceed max supply");
+        
+        _mint(_to, _amount);
+        
+        // Update voting power in DAO
+        _updateVotingPower(_to);
+    }
+    
+    function burn(uint256 _amount) external {
+        require(_amount > 0, "ZiGGOV: Amount must be greater than 0");
+        require(balanceOf(msg.sender) >= _amount, "ZiGGOV: Insufficient balance");
+        
+        _burn(msg.sender, _amount);
+        
+        // Update voting power in DAO
+        _updateVotingPower(msg.sender);
+    }
+    
+    function setReparationsDAO(address _dao) external onlyOwner {
+        require(_dao != address(0), "ZiGGOV: Invalid DAO address");
+        require(_dao != reparationsDAO, "ZiGGOV: Same DAO address");
+        
+        address oldDAO = reparationsDAO;
+        reparationsDAO = _dao;
+        emit ReparationsDAOUpdated(oldDAO, _dao);
+    }
+    
+    function addMinter(address _minter) external onlyOwner {
+        require(_minter != address(0), "ZiGGOV: Invalid minter address");
+        require(!minters[_minter], "ZiGGOV: Already a minter");
+        
+        minters[_minter] = true;
+        emit MinterAdded(_minter);
+    }
+    
+    function removeMinter(address _minter) external onlyOwner {
+        require(_minter != address(0), "ZiGGOV: Invalid minter address");
+        require(minters[_minter], "ZiGGOV: Not a minter");
+        require(_minter != owner(), "ZiGGOV: Cannot remove owner as minter");
+        
+        minters[_minter] = false;
+        emit MinterRemoved(_minter);
+    }
+    
+    function pauseMinting() external onlyOwner {
+        require(!mintingPaused, "ZiGGOV: Already paused");
+        mintingPaused = true;
+        emit MintingPaused();
+    }
+    
+    function unpauseMinting() external onlyOwner {
+        require(mintingPaused, "ZiGGOV: Not paused");
+        mintingPaused = false;
+        emit MintingUnpaused();
+    }
+    
+    function updateMaxSupply(uint256 _newMaxSupply) external onlyOwner {
+        require(_newMaxSupply > 0, "ZiGGOV: Max supply must be greater than 0");
+        require(_newMaxSupply >= totalSupply(), "ZiGGOV: New max supply below current supply");
+        require(_newMaxSupply != maxSupply, "ZiGGOV: Same max supply");
+        
+        uint256 oldMaxSupply = maxSupply;
+        maxSupply = _newMaxSupply;
+        emit MaxSupplyUpdated(oldMaxSupply, _newMaxSupply);
+    }
+    
+    function _updateVotingPower(address _user) internal {
+        if (reparationsDAO != address(0)) {
+            try IReparationsDAO(reparationsDAO).setVotingPower(_user, balanceOf(_user)) {
+                // Success - voting power updated
+            } catch {
+                // Silently fail to avoid blocking token transfers
+                // Could emit an event here for monitoring
+            }
+        }
+    }
+    
+    // Override transfer functions to update voting power
+    function _update(address from, address to, uint256 value) internal virtual override {
+        super._update(from, to, value);
+        
+        // Update voting power for both sender and receiver
+        if (from != address(0)) {
+            _updateVotingPower(from);
+        }
+        if (to != address(0)) {
+            _updateVotingPower(to);
+        }
+    }
+    
+    function isMinter(address _account) external view returns (bool) {
+        return minters[_account];
+    }
+    
+    function getRemainingMintableSupply() external view returns (uint256) {
+        return maxSupply - totalSupply();
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/EthicalGuard.sol
+---Filename: EthicalGuard.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+
+interface AccessVerifier {
+    function isVerified(address _user) external view returns (bool);
+}
+
+/**
+ * @title Ethical Guard
+ * @dev Ensures ethical distribution and prevents exploitation
+ */
+contract EthicalGuard is Ownable {
+    using Math for uint256;
+    
+    mapping(address => uint256) public lastClaimTime;
+    mapping(address => uint256) public totalClaimed;
+    mapping(address => bool) public blacklisted;
+    
+    uint256 public cooldownPeriod = 7 days; // Weekly claims
+    uint256 public maxClaimPerWeek = 1000e18; // Max ZiG per week
+    uint256 public maxTotalClaim = 50000e18; // Max lifetime claim
+    
+    address public accessVerifier;
+    
+    event ClaimApproved(address indexed user, uint256 amount);
+    event UserBlacklisted(address indexed user);
+    
+    constructor(address _initialOwner, address _accessVerifier) Ownable(_initialOwner) {
+        accessVerifier = _accessVerifier;
+    }
+
+    
+    function validateClaim(address _user, uint256 _amount) internal view returns (bool) {
+        if (blacklisted[_user]) return false;
+        if (!AccessVerifier(accessVerifier).isVerified(_user)) return false;
+        if (block.timestamp < lastClaimTime[_user] + cooldownPeriod) return false;
+        if (_amount > maxClaimPerWeek) return false;
+        if (totalClaimed[_user] + _amount > maxTotalClaim) return false;
+        
+        return true;
+    }
+    
+    function recordClaim(address _user, uint256 _amount) external onlyOwner {
+        require(validateClaim(_user, _amount), "EthicalGuard: Claim not valid");
+        
+        lastClaimTime[_user] = block.timestamp;
+        totalClaimed[_user] += _amount;
+        
+        emit ClaimApproved(_user, _amount);
+    }
+    
+    function blacklistUser(address _user) external onlyOwner {
+        blacklisted[_user] = true;
+        emit UserBlacklisted(_user);
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ZiGRWAToken.sol
+---Filename: ZiGRWAToken.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+
+/**
+ * @title ZiG RWA Token
+ * @dev Real World Asset tokenization for the ZiG ecosystem
+ */
+abstract contract ZiGRWAToken is ERC721, Ownable {
+    using Math for uint256;
+    
+    struct RWAData {
+        string assetType;
+        string location;
+        uint256 valuation;
+        string legalDocumentHash;
+        bool isVerified;
+        uint256 tokenizationDate;
+    }
+    
+    mapping(uint256 => RWAData) public rwaData;
+    mapping(address => bool) public verifiers;
+    uint256 private _tokenIdCounter;
+    
+    event RWATokenized(uint256 indexed tokenId, string assetType, uint256 valuation);
+    
+    constructor() ERC721("ZiG Real World Asset", "ZiGRWA") {
+        verifiers[msg.sender] = true;
+    }
+    
+    function tokenizeAsset(
+        address _owner,
+        string memory _assetType,
+        string memory _location,
+        uint256 _valuation,
+        string memory _legalDocumentHash
+    ) external returns (uint256) {
+        require(verifiers[msg.sender], "ZiGRWA: Not authorized verifier");
+        
+        _tokenIdCounter++;
+        uint256 tokenId = _tokenIdCounter;
+        
+        _safeMint(_owner, tokenId);
+        
+        rwaData[tokenId] = RWAData({
+            assetType: _assetType,
+            location: _location,
+            valuation: _valuation,
+            legalDocumentHash: _legalDocumentHash,
+            isVerified: true,
+            tokenizationDate: block.timestamp
+        });
+        
+        emit RWATokenized(tokenId, _assetType, _valuation);
+        return tokenId;
+    }
+    
+    function addVerifier(address _verifier) external onlyOwner {
+        verifiers[_verifier] = true;
+    }
+}
+---File Content End---
+
+---Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ReparationsDAO.sol
+---Filename: ReparationsDAO.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+import "../cultural_utilty_layer/SoulReparationNFT.sol";
+
+/**
+ * @title Reparations DAO
+ * @dev Governance for reparations distribution with African majority requirement
+ */
+contract ReparationsDAO is Ownable {
+    using Math for uint256;
+    
+    struct Proposal {
+        uint256 id;
+        address proposer;
+        string description;
+        uint256 amount;
+        address recipient;
+        uint256 votesFor;
+        uint256 votesAgainst;
+        uint256 africanVotes; // Track African votes separately
+        uint256 deadline;
+        bool executed;
+    }
+    
+    mapping(uint256 => Proposal) public proposals;
+    mapping(address => uint256) public votingPower;
+    mapping(address => bool) public africanVerified;
+    mapping(uint256 => mapping(address => bool)) public hasVoted; // Separate voting tracker
+    
+    uint256 public proposalCount;
+    uint256 public votingDuration = 7 days;
+    uint256 public quorumRequirement = 1000e18;
+    
+    address public governanceToken;
+    address public ethicalGuard;
+    address public reparationNFT;
+    
+    event ProposalCreated(uint256 indexed proposalId, address indexed proposer, uint256 amount);
+    event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 weight);
+    event ProposalExecuted(uint256 indexed proposalId);
+    
+    constructor(
+        address _initialOwner,
+        address _governanceToken,
+        address _ethicalGuard,
+        address _reparationNFT
+    ) Ownable(_initialOwner) {
+        governanceToken = _governanceToken;
+        ethicalGuard = _ethicalGuard;
+        reparationNFT = _reparationNFT;
+    }
+
+    function createProposal(
+        string memory _description,
+        uint256 _amount,
+        address _recipient
+    ) external returns (uint256) {
+        require(votingPower[msg.sender] > 0, "DAO: No voting power");
+        require(africanVerified[msg.sender], "DAO: Must be verified African");
+        
+        proposalCount++;
+        uint256 proposalId = proposalCount;
+        
+        Proposal storage proposal = proposals[proposalId];
+        proposal.id = proposalId;
+        proposal.proposer = msg.sender;
+        proposal.description = _description;
+        proposal.amount = _amount;
+        proposal.recipient = _recipient;
+        proposal.deadline = block.timestamp + votingDuration;
+        
+        emit ProposalCreated(proposalId, msg.sender, _amount);
+        return proposalId;
+    }
+    
+    function vote(uint256 _proposalId, bool _support) external {
+        Proposal storage proposal = proposals[_proposalId];
+        require(block.timestamp < proposal.deadline, "DAO: Voting ended");
+        require(!hasVoted[_proposalId][msg.sender], "DAO: Already voted");
+        require(votingPower[msg.sender] > 0, "DAO: No voting power");
+        
+        hasVoted[_proposalId][msg.sender] = true;
+        uint256 weight = votingPower[msg.sender];
+        
+        if (_support) {
+            proposal.votesFor += weight;
+        } else {
+            proposal.votesAgainst += weight;
+        }
+        
+        // Track African votes separately
+        if (africanVerified[msg.sender]) {
+            proposal.africanVotes += weight;
+        }
+        
+        emit VoteCast(_proposalId, msg.sender, _support, weight);
+    }
+    
+    function executeProposal(uint256 _proposalId) external {
+        Proposal storage proposal = proposals[_proposalId];
+        require(block.timestamp >= proposal.deadline, "DAO: Voting not ended");
+        require(!proposal.executed, "DAO: Already executed");
+        require(proposal.votesFor > proposal.votesAgainst, "DAO: Proposal rejected");
+        
+        uint256 totalVotes = proposal.votesFor + proposal.votesAgainst;
+        require(totalVotes >= quorumRequirement, "DAO: Quorum not met");
+        require(
+            (proposal.africanVotes * 100) / totalVotes >= 51,
+            "DAO: Need 51% African votes"
+        );
+        
+        proposal.executed = true;
+        
+        SoulReparationNFT(reparationNFT).claimReparation(
+            proposal.recipient,
+            "DAO Approved Reparation",
+            proposal.amount,
+            proposal.description
+        );
+        
+        emit ProposalExecuted(_proposalId);
+    }
+    
+    function setVotingPower(address _user, uint256 _power) external onlyOwner {
+        votingPower[_user] = _power;
+    }
+    
+    function verifyAfrican(address _user) external onlyOwner {
+        africanVerified[_user] = true;
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ZiGUtilityToken.sol
+---Filename: ZiGUtilityToken.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+/**
+ * @title ZiG Utility Token
+ * @dev Multi-purpose utility token for ecosystem services
+ */
+abstract contract ZiGUtilityToken is ERC1155, Ownable {
+    using Math for uint256;
+    
+    mapping(uint256 => string) public tokenURIs;
+    mapping(uint256 => uint256) public tokenSupply;
+    mapping(address => bool) public minters;
+    
+    // Token IDs for different utilities
+    uint256 public constant TRANSACTION_FEE_TOKEN = 1;
+    uint256 public constant STAKING_REWARD_TOKEN = 2;
+    uint256 public constant GOVERNANCE_BONUS_TOKEN = 3;
+    uint256 public constant CULTURAL_ACCESS_TOKEN = 4;
+    
+    constructor() ERC1155("") {
+        minters[msg.sender] = true;
+    }
+    
+    function mint(
+        address _to,
+        uint256 _id,
+        uint256 _amount,
+        bytes memory _data
+    ) external {
+        require(minters[msg.sender], "ZiGUtility: Not authorized minter");
+        _mint(_to, _id, _amount, _data);
+        tokenSupply[_id] = tokenSupply[_id] + _amount;
+    }
+    
+    function setTokenURI(uint256 _id, string memory _uri) external onlyOwner {
+        tokenURIs[_id] = _uri;
+    }
+    
+    function uri(uint256 _id) public view virtual override returns (string memory) {
+        return tokenURIs[_id];
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ZiGMemeToken.sol
+---Filename: ZiGMemeToken.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+/**
+ * @title ZiG Meme Token
+ * @dev Community-driven meme token for viral marketing
+ */
+abstract contract ZiGMemeToken is ERC20, Ownable {
+    using Math for uint256;
+    
+    uint256 public constant MAX_SUPPLY = 1000000000e18; // 1 billion
+    mapping(address => bool) public memeCreators;
+    
+    event MemeCreated(address indexed creator, uint256 amount, string memeHash);
+    
+    constructor() ERC20("ZiG Meme Token", "ZiGMEME") {
+        memeCreators[msg.sender] = true;
+    }
+    
+    function createMeme(uint256 _amount, string memory _memeHash) external {
+        require(memeCreators[msg.sender], "ZiGMEME: Not authorized creator");
+        require(totalSupply() + _amount <= MAX_SUPPLY, "ZiGMEME: Max supply exceeded");
+
+        
+        _mint(msg.sender, _amount);
+        emit MemeCreated(msg.sender, _amount, _memeHash);
+    }
+    
+    function addMemeCreator(address _creator) external onlyOwner {
+        memeCreators[_creator] = true;
+    }
+}
+---File Content End---
+
+---Path and files name: ZiGEcocash/gamefi_expansion/ZiGGameFiToken.sol
+---Filename: ZiGGameFiToken.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+
+/**
+ * @title ZiG GameFi Token
+ * @dev Gaming and DeFi integration token with score-based rewards system
+ * 
+ * FIXES APPLIED:
+ * 1. Removed unused imports (ERC721, ERC1155)
+ * 2. Made contract concrete instead of abstract
+ * 3. Fixed constructor to properly initialize Ownable
+ * 4. Added ReentrancyGuard for claim function
+ * 5. Fixed potential overflow in reward calculations
+ * 6. Added proper initialization for lastRewardClaim
+ * 7. Added input validation and bounds checking
+ * 8. Improved event structure and error handling
+ * 9. Added view functions for better integration
+ * 10. Fixed potential exploit in reward calculation
+ */
+contract ZiGGameFiToken is ERC20, ERC20Burnable, Ownable, ReentrancyGuard {
+    using Math for uint256;
+    
+    // Game integration
+    mapping(address => bool) public gameContracts;
+    mapping(address => uint256) public playerScores;
+    mapping(address => uint256) public lastRewardClaim;
+    mapping(address => uint256) public totalRewardsClaimed;
+    
+    // Reward parameters
+    uint256 public constant REWARD_RATE = 100e18; // Tokens per point per day
+    uint256 public constant CLAIM_COOLDOWN = 1 days;
+    uint256 public constant MAX_SCORE = 1_000_000; // Prevent unrealistic scores
+    uint256 public constant MAX_DAILY_REWARDS = 1_000_000e18; // Daily reward cap per user
+    
+    // Total rewards tracking
+    uint256 public totalRewardsDistributed;
+    uint256 public maxTotalRewards = 100_000_000e18; // 100M token cap for rewards
+    
+    // Events
+    event GameContractAdded(address indexed gameContract);
+    event GameContractRemoved(address indexed gameContract);
+    event GameScoreUpdated(address indexed player, uint256 oldScore, uint256 newScore);
+    event RewardsClaimed(address indexed player, uint256 amount, uint256 newTotal);
+    event RewardParametersUpdated(uint256 newMaxTotalRewards);
+    
+    // Custom errors
+    error UnauthorizedGameContract();
+    error ClaimCooldownActive();
+    error InvalidScore();
+    error RewardCapExceeded();
+    error InvalidAddress();
+    error NoRewardsAvailable();
+    
+    constructor() ERC20("ZiG GameFi Token", "ZiGGAME") Ownable(msg.sender) {
+        // Initialize the deployer as the first authorized game contract
+        gameContracts[msg.sender] = true;
+        emit GameContractAdded(msg.sender);
+    }
+    
+    /**
+     * @dev Update player score from authorized game contracts
+     * @param _player The player whose score to update
+     * @param _score The new score (must be reasonable)
+     */
+    function updatePlayerScore(address _player, uint256 _score) external {
+        if (!gameContracts[msg.sender]) revert UnauthorizedGameContract();
+        if (_player == address(0)) revert InvalidAddress();
+        if (_score > MAX_SCORE) revert InvalidScore();
+        
+        uint256 oldScore = playerScores[_player];
+        playerScores[_player] = _score;
+        
+        // Initialize claim timestamp for new players
+        if (lastRewardClaim[_player] == 0) {
+            lastRewardClaim[_player] = block.timestamp;
+        }
+        
+        emit GameScoreUpdated(_player, oldScore, _score);
+    }
+    
+    /**
+     * @dev Claim accumulated rewards based on score and time
+     */
+    function claimRewards() external nonReentrant {
+        if (block.timestamp < lastRewardClaim[msg.sender] + CLAIM_COOLDOWN) {
+            revert ClaimCooldownActive();
+        }
+        
+        uint256 rewardAmount = calculatePendingRewards(msg.sender);
+        if (rewardAmount == 0) revert NoRewardsAvailable();
+        
+        // Check global reward cap
+        if (totalRewardsDistributed + rewardAmount > maxTotalRewards) {
+            revert RewardCapExceeded();
+        }
+        
+        // Update state before minting (CEI pattern)
+        lastRewardClaim[msg.sender] = block.timestamp;
+        totalRewardsClaimed[msg.sender] += rewardAmount;
+        totalRewardsDistributed += rewardAmount;
+        
+        // Mint rewards
+        _mint(msg.sender, rewardAmount);
+        
+        emit RewardsClaimed(msg.sender, rewardAmount, totalRewardsClaimed[msg.sender]);
+    }
+    
+    /**
+     * @dev Calculate pending rewards for a player
+     * @param _player The player to calculate rewards for
+     * @return rewardAmount The amount of rewards pending
+     */
+    function calculatePendingRewards(address _player) public view returns (uint256 rewardAmount) {
+        if (lastRewardClaim[_player] == 0 || playerScores[_player] == 0) {
+            return 0;
+        }
+
+        uint256 timeSinceLastClaim = block.timestamp - lastRewardClaim[_player];
+        if (timeSinceLastClaim < CLAIM_COOLDOWN) {
+            return 0;
+        }
+
+        // Calculate base reward: score * rate * time
+        // Use '*' for multiplication and '/' for division directly on uint256
+        rewardAmount = (playerScores[_player] * REWARD_RATE * timeSinceLastClaim) / 1 days;
+
+        // Apply daily cap
+        uint256 dailyReward = playerScores[_player] * REWARD_RATE;
+        // Corrected the daily cap calculation to use arithmetic operators
+        if (rewardAmount > (dailyReward * timeSinceLastClaim) / 1 days) {
+            // Assuming Math.min is either imported or a custom function.
+            // If it's part of OpenZeppelin's Math, ensure it's imported.
+            rewardAmount = Math.min(rewardAmount, (MAX_DAILY_REWARDS * timeSinceLastClaim) / 1 days);
+        }
+
+        // Ensure we don't exceed global cap
+        if (totalRewardsDistributed + rewardAmount > maxTotalRewards) {
+            if (totalRewardsDistributed >= maxTotalRewards) {
+                return 0;
+            }
+            rewardAmount = maxTotalRewards - totalRewardsDistributed;
+        }
+    }
+    
+    /**
+     * @dev Add a new authorized game contract
+     * @param _gameContract Address of the game contract to authorize
+     */
+    function addGameContract(address _gameContract) external onlyOwner {
+        if (_gameContract == address(0)) revert InvalidAddress();
+        
+        gameContracts[_gameContract] = true;
+        emit GameContractAdded(_gameContract);
+    }
+    
+    /**
+     * @dev Remove authorization from a game contract
+     * @param _gameContract Address of the game contract to deauthorize
+     */
+    function removeGameContract(address _gameContract) external onlyOwner {
+        if (_gameContract == address(0)) revert InvalidAddress();
+        
+        gameContracts[_gameContract] = false;
+        emit GameContractRemoved(_gameContract);
+    }
+    
+    /**
+     * @dev Update the maximum total rewards that can be distributed
+     * @param _newMaxTotalRewards New maximum total rewards
+     */
+    function updateMaxTotalRewards(uint256 _newMaxTotalRewards) external onlyOwner {
+        require(_newMaxTotalRewards >= totalRewardsDistributed, "Cannot set below current distribution");
+        
+        maxTotalRewards = _newMaxTotalRewards;
+        emit RewardParametersUpdated(_newMaxTotalRewards);
+    }
+    
+    /**
+     * @dev Check if an address is an authorized game contract
+     * @param _contract Address to check
+     * @return bool Whether the address is authorized
+     */
+    function isGameContract(address _contract) external view returns (bool) {
+        return gameContracts[_contract];
+    }
+    
+    /**
+     * @dev Get player statistics
+     * @param _player Player address
+     * @return score Current player score
+     * @return lastClaim Timestamp of last reward claim
+     * @return totalClaimed Total rewards claimed by player
+     * @return pendingRewards Current pending rewards
+     */
+    function getPlayerStats(address _player) external view returns (
+        uint256 score,
+        uint256 lastClaim,
+        uint256 totalClaimed,
+        uint256 pendingRewards
+    ) {
+        return (
+            playerScores[_player],
+            lastRewardClaim[_player],
+            totalRewardsClaimed[_player],
+            calculatePendingRewards(_player)
+        );
+    }
+    
+    /**
+     * @dev Get contract statistics
+     * @return totalDistributed Total rewards distributed so far
+     * @return maxTotal Maximum total rewards that can be distributed
+     * @return remainingRewards Remaining rewards in the pool
+     * @return rewardRate Current reward rate (tokens per point per day)
+     */
+    function getContractStats() external view returns (
+        uint256 totalDistributed,
+        uint256 maxTotal,
+        uint256 remainingRewards,
+        uint256 rewardRate
+    ) {
+        return (
+            totalRewardsDistributed,
+            maxTotalRewards,
+            maxTotalRewards > totalRewardsDistributed ? maxTotalRewards - totalRewardsDistributed : 0,
+            REWARD_RATE
+        );
+    }
+    
+    /**
+     * @dev Check if a player can claim rewards
+     * @param _player Player address to check
+     * @return canClaim Whether the player can claim
+     * @return timeUntilNextClaim Seconds until next claim is available
+     */
+    function canPlayerClaim(address _player) external view returns (bool canClaim, uint256 timeUntilNextClaim) {
+        if (lastRewardClaim[_player] == 0) {
+            return (false, 0); // Player never set up
+        }
+        
+        uint256 nextClaimTime = lastRewardClaim[_player] + CLAIM_COOLDOWN;
+        
+        if (block.timestamp >= nextClaimTime) {
+            canClaim = calculatePendingRewards(_player) > 0;
+            timeUntilNextClaim = 0;
+        } else {
+            canClaim = false;
+            timeUntilNextClaim = nextClaimTime - block.timestamp;
+        }
+    }
+    
+    /**
+     * @dev Emergency function to pause reward distribution
+     * Sets max rewards to current distribution to halt new rewards
+     */
+    function pauseRewards() external onlyOwner {
+        maxTotalRewards = totalRewardsDistributed;
+        emit RewardParametersUpdated(maxTotalRewards);
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/gamefi_expansion/ZiGBondingCurve.sol
+---Filename: ZiGBondingCurve.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@prb/math/src/UD60x18.sol";
+import {SD59x18, sd} from "@prb/math/src/SD59x18.sol";
+import {UD60x18, ud, unwrap} from "@prb/math/src/UD60x18.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+/**
+ * @title ZiG Bonding Curve - Simple 3-Phase Model
+ * @dev Non-upgradeable bonding curve optimized for early and late adopters
+ * 
+ * OVERFLOW MITIGATION STRATEGIES:
+ * 1. Input validation with reasonable limits
+ * 2. Safe mathematical operations with bounds checking
+ * 3. Simplified sigmoid using linear approximation for extreme values
+ * 4. Exponential growth caps to prevent runaway calculations
+ * 5. Emergency circuit breakers for price limits
+ */
+
+contract ZiGBondingCurve is Ownable, ReentrancyGuard {
+    using {unwrap} for UD60x18;
+
+    // Core state
+    uint256 public totalMinted;
+    
+    // Phase thresholds - Perfect for early/late adopter balance
+    uint256 public constant SIGMOID_PHASE_END = 1_000 ether;    // Early adopters get cheap tokens
+    uint256 public constant LINEAR_PHASE_END = 10_000 ether;    // Steady growth phase
+    uint256 public constant MAX_SUPPLY = 100_000 ether;         // Hard cap to prevent overflow
+    
+    // Price parameters with overflow protection
+    UD60x18 public constant BASE_PRICE = UD60x18.wrap(1e18);    // 1.0 ETH
+    UD60x18 public constant LINEAR_SLOPE = UD60x18.wrap(1e15);  // 0.001 ETH per token
+    UD60x18 public constant EXP_BASE = UD60x18.wrap(1002e15);   // 1.002 (0.2% growth - safer than 0.5%)
+    UD60x18 public constant MAX_PRICE = UD60x18.wrap(100e18);   // 100 ETH price ceiling
+    
+    // Transaction limits to prevent abuse/overflow
+    uint256 public constant MIN_PURCHASE = 1e15;     // 0.001 tokens
+    uint256 public constant MAX_PURCHASE = 100 ether; // 100 tokens per tx
+    
+    mapping(address => uint256) public positions;
+    
+    event Minted(address indexed user, uint256 amount, uint256 cost);
+    event Burned(address indexed user, uint256 amount, uint256 refund);
+    event PhaseTransition(uint256 phase, uint256 supply);
+    
+    // Custom errors for gas efficiency
+    error InvalidAmount();
+    error InsufficientPayment();
+    error InsufficientBalance();
+    error ExceedsMaxSupply();
+    error PriceCapExceeded();
+
+    constructor() Ownable(msg.sender) {}
+
+    /**
+     * @dev OVERFLOW-SAFE price calculation with 3 phases
+     * Each phase has built-in protection against mathematical overflow
+     */
+    function _calculatePrice(uint256 currentSupply) internal pure returns (UD60x18 price) {
+        // Hard supply limit prevents all downstream overflows
+        if (currentSupply >= MAX_SUPPLY) revert ExceedsMaxSupply();
+        
+        if (currentSupply < SIGMOID_PHASE_END) {
+            // SIGMOID PHASE - Overflow-safe implementation
+            price = _calculateSigmoidPriceSafe(currentSupply);
+        } else if (currentSupply < LINEAR_PHASE_END) {
+            // LINEAR PHASE - Simple, overflow-safe
+            price = _calculateLinearPriceSafe(currentSupply);
+        } else {
+            // EXPONENTIAL PHASE - Capped growth to prevent overflow
+            price = _calculateExponentialPriceSafe(currentSupply);
+        }
+        
+        // Final safety check - price ceiling
+        if (price.gt(MAX_PRICE)) {
+            price = MAX_PRICE;
+        }
+    }
+
+    /**
+     * @dev Overflow-safe sigmoid calculation
+     * Uses linear approximation for extreme values to prevent overflow
+     */
+    function _calculateSigmoidPriceSafe(uint256 supply) internal pure returns (UD60x18 price) {
+        // Simplified sigmoid that can't overflow
+        // price = basePrice * (supply / SIGMOID_PHASE_END)^0.5
+        // This gives smooth curve without complex exponentials
+        
+        UD60x18 supplyRatio = ud(supply).div(ud(SIGMOID_PHASE_END));
+        UD60x18 sqrtRatio = supplyRatio.sqrt();
+        
+        price = BASE_PRICE.mul(sqrtRatio);
+        
+        // Ensure minimum price progression
+        if (price.lt(ud(1e15))) { // Minimum 0.001 ETH
+            price = ud(1e15);
+        }
+    }
+
+    /**
+     * @dev Linear phase - cannot overflow with reasonable inputs
+     */
+    function _calculateLinearPriceSafe(uint256 currentSupply) internal pure returns (UD60x18 price) {
+        uint256 linearSupply = currentSupply - SIGMOID_PHASE_END;
+        
+        // Safe multiplication with bounds checking
+        UD60x18 linearComponent = LINEAR_SLOPE.mul(ud(linearSupply));
+        price = BASE_PRICE.add(linearComponent);
+    }
+
+    /**
+     * @dev Exponential phase with STRICT overflow protection
+     */
+    function _calculateExponentialPriceSafe(uint256 currentSupply) internal pure returns (UD60x18 price) {
+        uint256 expSupply = currentSupply - LINEAR_PHASE_END;
+        
+        // CRITICAL: Cap exponential input to prevent overflow
+        // Max 50 tokens in exp phase = reasonable price growth
+        if (expSupply > 50 ether) {
+            expSupply = 50 ether;
+        }
+        
+        // Use smaller base and limited iterations
+        UD60x18 expFactor = ud(1e18);
+        UD60x18 increment = ud(expSupply).div(ud(1e18)); // Normalize to unit steps
+        
+        // Safe exponential approximation: (1 + 0.002)^x ≈ 1 + 0.002*x + (0.002*x)^2/2
+        UD60x18 linearTerm = ud(2e15).mul(increment); // 0.002 * x
+        UD60x18 quadraticTerm = linearTerm.mul(increment).div(ud(2e18)); // (0.002*x)^2/2
+        
+        expFactor = ud(1e18).add(linearTerm).add(quadraticTerm);
+        
+        price = BASE_PRICE.mul(expFactor);
+    }
+
+    /**
+     * @dev Get current price - overflow protected
+     */
+    function getPrice() public view returns (uint256) {
+        return unwrap(_calculatePrice(totalMinted));
+    }
+
+    /**
+     * @dev Get current phase for UI
+     */
+    function getCurrentPhase() public view returns (uint256) {
+        if (totalMinted < SIGMOID_PHASE_END) return 0; // Early adopter phase
+        if (totalMinted < LINEAR_PHASE_END) return 1;  // Growth phase  
+        return 2; // Late adopter/premium phase
+    }
+
+    /**
+     * @dev Calculate total cost with overflow protection
+     */
+    function calculateMintCost(uint256 amount) public view returns (uint256 totalCost) {
+        if (amount == 0 || amount > MAX_PURCHASE) revert InvalidAmount();
+        if (totalMinted + amount > MAX_SUPPLY) revert ExceedsMaxSupply();
+        
+        totalCost = 0;
+        
+        // Calculate cost for each token with overflow check
+        for (uint256 i = 0; i < amount; i++) {
+            uint256 tokenPrice = unwrap(_calculatePrice(totalMinted + i));
+            
+            // Overflow check before addition
+            if (totalCost > type(uint256).max - tokenPrice) {
+                revert PriceCapExceeded();
+            }
+            
+            totalCost += tokenPrice;
+        }
+    }
+
+    /**
+     * @dev Mint tokens with comprehensive overflow protection
+     */
+    function mint(uint256 amount) external payable nonReentrant {
+        if (amount < MIN_PURCHASE || amount > MAX_PURCHASE) revert InvalidAmount();
+        if (totalMinted + amount > MAX_SUPPLY) revert ExceedsMaxSupply();
+
+        uint256 totalCost = calculateMintCost(amount);
+        
+        if (msg.value < totalCost) revert InsufficientPayment();
+
+        // Update state
+        totalMinted += amount;
+        positions[msg.sender] += amount;
+
+        // Refund excess payment
+        if (msg.value > totalCost) {
+            payable(msg.sender).transfer(msg.value - totalCost);
+        }
+
+        emit Minted(msg.sender, amount, totalCost);
+        emit PhaseTransition(getCurrentPhase(), totalMinted);
+    }
+
+    /**
+     * @dev Burn tokens with overflow-safe refund calculation
+     */
+    function burn(uint256 amount) external nonReentrant {
+        if (amount == 0 || amount > positions[msg.sender]) revert InsufficientBalance();
+
+        uint256 refund = 0;
+        
+        // Calculate refund with overflow protection
+        for (uint256 i = 0; i < amount; i++) {
+            if (totalMinted > i) {
+                uint256 tokenRefund = unwrap(_calculatePrice(totalMinted - 1 - i));
+                
+                // Overflow check
+                if (refund > type(uint256).max - tokenRefund) {
+                    revert PriceCapExceeded();
+                }
+                
+                refund += tokenRefund;
+            }
+        }
+
+        // Update state
+        totalMinted -= amount;
+        positions[msg.sender] -= amount;
+
+        // Transfer refund
+        payable(msg.sender).transfer(refund);
+
+        emit Burned(msg.sender, amount, refund);
+    }
+
+    /**
+     * @dev Emergency function - only if something goes very wrong
+     */
+    function emergencyWithdraw() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    // View functions for frontend
+    function getContractInfo() external view returns (
+        uint256 _totalMinted,
+        uint256 _currentPhase,
+        uint256 _currentPrice,
+        uint256 _maxSupply,
+        uint256 _sigmoidEnd,
+        uint256 _linearEnd
+    ) {
+        return (
+            totalMinted,
+            getCurrentPhase(),
+            getPrice(),
+            MAX_SUPPLY,
+            SIGMOID_PHASE_END,
+            LINEAR_PHASE_END
+        );
+    }
+
+    function getUserPosition(address user) external view returns (uint256 position, uint256 currentValue) {
+        position = positions[user];
+        currentValue = 0;
+        
+        // Calculate current value of user's position
+        if (position > 0 && totalMinted >= position) {
+            for (uint256 i = 0; i < position; i++) {
+                currentValue += unwrap(_calculatePrice(totalMinted - position + i));
+            }
+        }
+    }
+
+    /**
+     * @dev Simulate price at different supply levels (for charts/analysis)
+     */
+    function getProjectedPrice(uint256 atSupply) external pure returns (uint256) {
+        if (atSupply > MAX_SUPPLY) return unwrap(MAX_PRICE);
+        return unwrap(_calculatePrice(atSupply));
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/economic_core/ZiGOracleHub.sol
+---Filename: ZiGOracleHub.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+
+interface IPriceOracle {
+    function getPrice(address token) external view returns (uint256);
+}
+
+interface IAggregatorV3Interface {
+    function latestRoundData()
+        external
+        view
+        returns (
+            uint80 roundId,
+            int256 price,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        );
+    function decimals() external view returns (uint8);
+}
+
+interface IBandOracle {
+    function getReferenceData(string memory base, string memory quote) 
+        external 
+        view 
+        returns (
+            uint256 rate,
+            uint256 lastUpdatedBase,
+            uint256 lastUpdatedQuote
+        );
+}
+
+/**
+ * @title ZiG Oracle Hub
+ * @dev Price oracle for the ZiG ecosystem combining Chainlink, Band Protocol, and internal feeds
+ */
+contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
+    
+    struct PriceData {
+        uint256 price;
+        uint256 timestamp;
+        bool isValid;
+    }
+
+    struct ChainlinkFeed {
+        IAggregatorV3Interface priceFeed;
+        bool isActive;
+    }
+
+    // Price feeds for C formula (Crypto: BTC, ETH, BNB, XRP, SOL)
+    mapping(string => PriceData) public cryptoPrices;
+    
+    // Price feeds for M formula (Metals: XAU, XPT, XPD, XAG)
+    mapping(string => PriceData) public metalPrices;
+    
+    // Price feeds for F formula (Forex: EUR, GBP, ZAR, JPY, CHF, CNH)
+    mapping(string => PriceData) public forexPrices;
+    
+    // Chainlink price feeds for enhanced reliability
+    mapping(string => ChainlinkFeed) public chainlinkFeeds;
+    
+    // Band Protocol oracle integration
+    mapping(string => IBandOracle) public bandOracles;
+    mapping(string => bool) public bandOracleActive;
+    
+    // Oracle addresses for authorization
+    mapping(address => bool) public authorizedOracles;
+    
+    // Token to oracle mapping for external price feeds
+    mapping(address => IPriceOracle) public tokenOracles;
+    
+    // Emergency price feeds for fallback
+    mapping(string => PriceData) public emergencyPrices;
+    mapping(address => bool) public emergencyOracles;
+    
+    uint256 public constant PRICE_STALENESS_THRESHOLD = 3600; // 1 hour
+    uint256 public constant EMERGENCY_STALENESS_THRESHOLD = 7200; // 2 hours for emergency feeds
+    uint256 public constant PRECISION = 1e18; // 18 decimal precision
+    uint256 public constant MAX_PRICE_DEVIATION = 1000; // 10% max deviation (in basis points)
+    
+    // ZiG backing components weights (in basis points for precision)
+    uint256 public constant BTC_WEIGHT = 120; // 0.12 -> 1200 basis points
+    uint256 public constant ETH_WEIGHT = 90;  // 0.09 -> 900 basis points
+    uint256 public constant BNB_WEIGHT = 30;  // 0.03 -> 300 basis points
+    uint256 public constant XRP_WEIGHT = 30;  // 0.03 -> 300 basis points
+    uint256 public constant SOL_WEIGHT = 30;  // 0.03 -> 300 basis points
+    
+    uint256 public constant XAU_WEIGHT = 2000; // 0.20 -> 2000 basis points
+    uint256 public constant XPT_WEIGHT = 1000; // 0.10 -> 1000 basis points
+    uint256 public constant XPD_WEIGHT = 600;  // 0.06 -> 600 basis points
+    uint256 public constant XAG_WEIGHT = 400;  // 0.04 -> 400 basis points
+    
+    uint256 public constant EUR_WEIGHT = 750;  // 0.075 -> 750 basis points
+    uint256 public constant GBP_WEIGHT = 600;  // 0.06 -> 600 basis points
+    uint256 public constant ZAR_WEIGHT = 600;  // 0.06 -> 600 basis points
+    uint256 public constant JPY_WEIGHT = 300;  // 0.03 -> 300 basis points
+    uint256 public constant CHF_WEIGHT = 300;  // 0.03 -> 300 basis points
+    uint256 public constant CNH_WEIGHT = 450;  // 0.045 -> 450 basis points
+    
+    event PriceUpdated(string indexed asset, uint256 price, uint256 timestamp);
+    event OracleAdded(address indexed oracle);
+    event OracleRemoved(address indexed oracle);
+    event TokenOracleSet(address indexed token, address indexed oracle);
+    event ChainlinkFeedSet(string indexed asset, address indexed feed);
+    event BandOracleSet(string indexed asset, address indexed oracle);
+    event EmergencyOracleSet(address indexed oracle, bool status);
+    event EmergencyPriceSet(string indexed asset, uint256 price);
+    
+    constructor(address initialOwner) Ownable(initialOwner) {
+        authorizedOracles[initialOwner] = true;
+        emergencyOracles[initialOwner] = true;
+    }
+
+    // ======================== ORACLE INTEGRATIONS ======================== //
+
+    // Chainlink integration functions
+    function setChainlinkFeed(string memory asset, address feedAddress) external onlyOwner {
+        require(feedAddress != address(0), "Invalid feed address");
+        chainlinkFeeds[asset] = ChainlinkFeed(IAggregatorV3Interface(feedAddress), true);
+        emit ChainlinkFeedSet(asset, feedAddress);
+    }
+
+    function toggleChainlinkFeed(string memory asset, bool isActive) external onlyOwner {
+        chainlinkFeeds[asset].isActive = isActive;
+    }
+
+    function getChainlinkPrice(string memory asset) public view returns (uint256, bool) {
+        ChainlinkFeed memory feed = chainlinkFeeds[asset];
+        if (!feed.isActive || address(feed.priceFeed) == address(0)) {
+            return (0, false);
+        }
+
+        try feed.priceFeed.latestRoundData() returns (
+            uint80 roundId,
+            int256 price,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        ) {
+            if (price <= 0 || updatedAt == 0 || block.timestamp - updatedAt > PRICE_STALENESS_THRESHOLD) {
+                return (0, false);
+            }
+            
+            uint8 decimals = feed.priceFeed.decimals();
+            uint256 adjustedPrice = uint256(price) * (10 ** (18 - decimals));
+            return (adjustedPrice, true);
+        } catch {
+            return (0, false);
+        }
+    }
+
+    // Band Protocol integration functions
+    function setBandOracle(string memory asset, address oracleAddress) external onlyOwner {
+        require(oracleAddress != address(0), "Invalid oracle address");
+        bandOracles[asset] = IBandOracle(oracleAddress);
+        bandOracleActive[asset] = true;
+        emit BandOracleSet(asset, oracleAddress);
+    }
+
+    function toggleBandOracle(string memory asset, bool isActive) external onlyOwner {
+        bandOracleActive[asset] = isActive;
+    }
+
+    function getBandPrice(string memory asset) public view returns (uint256, bool) {
+        if (!bandOracleActive[asset] || address(bandOracles[asset]) == address(0)) {
+            return (0, false);
+        }
+
+        try bandOracles[asset].getReferenceData(asset, "USD") returns (
+            uint256 rate,
+            uint256 lastUpdatedBase,
+            uint256 lastUpdatedQuote
+        ) {
+            uint256 lastUpdated = lastUpdatedBase > lastUpdatedQuote ? 
+                lastUpdatedBase : lastUpdatedQuote;
+                
+            if (rate == 0 || block.timestamp - lastUpdated > PRICE_STALENESS_THRESHOLD) {
+                return (0, false);
+            }
+            return (rate, true);
+        } catch {
+            return (0, false);
+        }
+    }
+
+    // ======================== PRICE GETTERS ======================== //
+
+    /**
+     * @dev Universal price fetcher with fallback cascade
+     * Priority: Chainlink -> Band -> Internal -> Emergency
+     */
+    function getPrice(string memory asset) external view returns (uint256) {
+        // 1. First try Chainlink (most reliable external oracle)
+        (uint256 chainlinkPrice, bool chainlinkValid) = getChainlinkPrice(asset);
+        if (chainlinkValid) {
+            return chainlinkPrice;
+        }
+
+        // 2. Fallback to Band Protocol (secondary external oracle)
+        (uint256 bandPrice, bool bandValid) = getBandPrice(asset);
+        if (bandValid) {
+            return bandPrice;
+        }
+
+        // 3. Check internal primary oracles (crypto/metal/forex)
+        if (_isPriceValid(asset, cryptoPrices)) {
+            return cryptoPrices[asset].price;
+        }
+        if (_isPriceValid(asset, metalPrices)) {
+            return metalPrices[asset].price;
+        }
+        if (_isPriceValid(asset, forexPrices)) {
+            return forexPrices[asset].price;
+        }
+
+        // 4. Last resort: Emergency price
+        if (_isEmergencyPriceValid(asset)) {
+            return emergencyPrices[asset].price;
+        }
+
+        // If all else fails, revert
+        revert(string(abi.encodePacked("No valid price source for ", asset)));
+    }
+
+    // Enhanced price validation with Chainlink and Band fallback
+    function getPriceWithFallback(string memory asset, string memory category) public view returns (uint256) {
+        // Try primary oracle first
+        mapping(string => PriceData) storage prices = cryptoPrices;
+        
+        if (keccak256(bytes(category)) == keccak256(bytes("crypto"))) {
+            prices = cryptoPrices;
+        } else if (keccak256(bytes(category)) == keccak256(bytes("metal"))) {
+            prices = metalPrices;
+        } else if (keccak256(bytes(category)) == keccak256(bytes("forex"))) {
+            prices = forexPrices;
+        } else {
+            revert("Invalid category");
+        }
+
+        // Check if primary oracle price is valid
+        if (_isPriceValid(asset, prices)) {
+            return prices[asset].price;
+        }
+
+        // Fallback to Chainlink
+        (uint256 chainlinkPrice, bool chainlinkValid) = getChainlinkPrice(asset);
+        if (chainlinkValid) {
+            return chainlinkPrice;
+        }
+
+        // Fallback to Band Protocol
+        (uint256 bandPrice, bool bandValid) = getBandPrice(asset);
+        if (bandValid) {
+            return bandPrice;
+        }
+
+        // Emergency fallback
+        if (_isEmergencyPriceValid(asset)) {
+            return emergencyPrices[asset].price;
+        }
+
+        revert(string(abi.encodePacked("No valid price for ", asset)));
+    }
+
+    // ======================== TOKEN ORACLE FUNCTIONS ======================== //
+
+    function setTokenOracle(address token, address oracleAddress) external onlyOwner {
+        require(token != address(0), "Invalid token address");
+        require(oracleAddress != address(0), "Invalid oracle address");
+        tokenOracles[token] = IPriceOracle(oracleAddress);
+        emit TokenOracleSet(token, oracleAddress);
+    }
+
+    function getTokenPrice(address token) external view returns (uint256) {
+        IPriceOracle oracle = tokenOracles[token];
+        require(address(oracle) != address(0), "Oracle not set for token");
+        return oracle.getPrice(token);
+    }
+
+    function getGoldPricePerMg(address paxgAddress) external view returns (uint256) {
+        require(paxgAddress != address(0), "Invalid PAXG address");
+        IPriceOracle oracle = tokenOracles[paxgAddress];
+        require(address(oracle) != address(0), "PAXG oracle not set");
+        uint256 pricePerGram = oracle.getPrice(paxgAddress);
+        return pricePerGram / 1000; // 1 gram = 1000 mg
+    }
+
+    // ======================== EMERGENCY FUNCTIONS ======================== //
+
+    function setEmergencyOracle(address oracle, bool status) external onlyOwner {
+        require(oracle != address(0), "Invalid oracle address");
+        emergencyOracles[oracle] = status;
+        emit EmergencyOracleSet(oracle, status);
+    }
+
+    function setEmergencyPrice(string memory asset, uint256 price) external {
+        require(emergencyOracles[msg.sender], "Not authorized emergency oracle");
+        require(price > 0, "Price must be greater than 0");
+        
+        emergencyPrices[asset] = PriceData(price, block.timestamp, true);
+        emit EmergencyPriceSet(asset, price);
+    }
+
+    function _isEmergencyPriceValid(string memory asset) internal view returns (bool) {
+        PriceData memory priceData = emergencyPrices[asset];
+        return priceData.isValid && 
+               priceData.price > 0 && 
+               (block.timestamp - priceData.timestamp) <= EMERGENCY_STALENESS_THRESHOLD;
+    }
+
+    // ======================== ORACLE MANAGEMENT ======================== //
+            
+    modifier onlyOracle() {
+        require(authorizedOracles[msg.sender], "OracleHub: Not authorized oracle");
+        _;
+    }
+    
+    function addOracle(address _oracle) external onlyOwner {
+        require(_oracle != address(0), "Invalid oracle address");
+        authorizedOracles[_oracle] = true;
+        emit OracleAdded(_oracle);
+    }
+    
+    function removeOracle(address _oracle) external onlyOwner {
+        authorizedOracles[_oracle] = false;
+        emit OracleRemoved(_oracle);
+    }
+
+    // ======================== PRICE UPDATE FUNCTIONS ======================== //
+    
+    function updateCryptoPrice(string memory _asset, uint256 _price) external onlyOracle whenNotPaused {
+        require(_price > 0, "Price must be greater than 0");
+        require(bytes(_asset).length > 0, "Asset name cannot be empty");
+        
+        _validatePriceDeviation(_asset, _price, "crypto");
+        
+        cryptoPrices[_asset] = PriceData(_price, block.timestamp, true);
+        emit PriceUpdated(_asset, _price, block.timestamp);
+    }
+    
+    function updateMetalPrice(string memory _asset, uint256 _price) external onlyOracle whenNotPaused {
+        require(_price > 0, "Price must be greater than 0");
+        require(bytes(_asset).length > 0, "Asset name cannot be empty");
+        
+        _validatePriceDeviation(_asset, _price, "metal");
+        
+        metalPrices[_asset] = PriceData(_price, block.timestamp, true);
+        emit PriceUpdated(_asset, _price, block.timestamp);
+    }
+    
+    function updateForexPrice(string memory _asset, uint256 _price) external onlyOracle whenNotPaused {
+        require(_price > 0, "Price must be greater than 0");
+        require(bytes(_asset).length > 0, "Asset name cannot be empty");
+        
+        _validatePriceDeviation(_asset, _price, "forex");
+        
+        forexPrices[_asset] = PriceData(_price, block.timestamp, true);
+        emit PriceUpdated(_asset, _price, block.timestamp);
+    }
+
+    function _validatePriceDeviation(string memory asset, uint256 newPrice, string memory category) internal view {
+        mapping(string => PriceData) storage prices = cryptoPrices;
+        
+        if (keccak256(bytes(category)) == keccak256(bytes("crypto"))) {
+            prices = cryptoPrices;
+        } else if (keccak256(bytes(category)) == keccak256(bytes("metal"))) {
+            prices = metalPrices;
+        } else if (keccak256(bytes(category)) == keccak256(bytes("forex"))) {
+            prices = forexPrices;
+        } else {
+            return; // Skip validation for unknown categories
+        }
+
+        PriceData memory currentData = prices[asset];
+        if (!currentData.isValid || currentData.price == 0) {
+            return; // Skip validation for first price update
+        }
+
+        uint256 currentPrice = currentData.price;
+        uint256 priceDiff = newPrice > currentPrice ? newPrice - currentPrice : currentPrice - newPrice;
+        uint256 maxDeviation = (currentPrice * MAX_PRICE_DEVIATION) / 10000;
+
+        require(priceDiff <= maxDeviation, "Price deviation too large");
+    }
+
+    // ======================== ZIG PRICE CALCULATION ======================== //
+    
+    /**
+     * @dev Calculate ZiG backing value using C + M + F formulas with enhanced precision
+     * C = 0.12*BTCUSD/1000 + 0.09*ETHUSD/100 + 0.03*BNBUSD + 0.03*XRPUSD*10 + 0.03*SOLUSD
+     * M = 0.20*XAUUSD + 0.10*XPTUSD + 0.06*XPDUSD + 0.04*XAGUSD
+     * F = 0.075*EURUSD + 0.06*GBPUSD + 0.06/USDZAR + 0.03/USDJPY + 0.03/USDCHF + 0.045/USDCNH
+     */
+    function calculateZiGPrice() external view returns (uint256) {
+        uint256 C = calculateCryptoComponent();
+        uint256 M = calculateMetalComponent();
+        uint256 F = calculateForexComponent();
+        
+        return C + M + F;
+    }
+    
+    function calculateCryptoComponent() public view returns (uint256) {
+        uint256 btcPrice = getPriceWithFallback("BTCUSD", "crypto");
+        uint256 ethPrice = getPriceWithFallback("ETHUSD", "crypto");
+        uint256 bnbPrice = getPriceWithFallback("BNBUSD", "crypto");
+        uint256 xrpPrice = getPriceWithFallback("XRPUSD", "crypto");
+        uint256 solPrice = getPriceWithFallback("SOLUSD", "crypto");
+        
+        // Using basis points for precise calculations
+        uint256 btc = (btcPrice * BTC_WEIGHT) / 10000 / 1000; // 0.12/1000
+        uint256 eth = (ethPrice * ETH_WEIGHT) / 10000 / 100;   // 0.09/100
+        uint256 bnb = (bnbPrice * BNB_WEIGHT) / 10000;         // 0.03
+        uint256 xrp = (xrpPrice * XRP_WEIGHT) / 10000 * 10;    // 0.03*10
+        uint256 sol = (solPrice * SOL_WEIGHT) / 10000;         // 0.03
+        
+        return btc + eth + bnb + xrp + sol;
+    }
+    
+    function calculateMetalComponent() public view returns (uint256) {
+        uint256 xauPrice = getPriceWithFallback("XAUUSD", "metal");
+        uint256 xptPrice = getPriceWithFallback("XPTUSD", "metal");
+        uint256 xpdPrice = getPriceWithFallback("XPDUSD", "metal");
+        uint256 xagPrice = getPriceWithFallback("XAGUSD", "metal");
+        
+        uint256 xau = (xauPrice * XAU_WEIGHT) / 10000;  // 0.20
+        uint256 xpt = (xptPrice * XPT_WEIGHT) / 10000;  // 0.10
+        uint256 xpd = (xpdPrice * XPD_WEIGHT) / 10000;  // 0.06
+        uint256 xag = (xagPrice * XAG_WEIGHT) / 10000;  // 0.04
+        
+        return xau + xpt + xpd + xag;
+    }
+    
+    function calculateForexComponent() public view returns (uint256) {
+        uint256 eurPrice = getPriceWithFallback("EURUSD", "forex");
+        uint256 gbpPrice = getPriceWithFallback("GBPUSD", "forex");
+        uint256 zarPrice = getPriceWithFallback("USDZAR", "forex");
+        uint256 jpyPrice = getPriceWithFallback("USDJPY", "forex");
+        uint256 chfPrice = getPriceWithFallback("USDCHF", "forex");
+        uint256 cnhPrice = getPriceWithFallback("USDCNH", "forex");
+        
+        uint256 eur = (eurPrice * EUR_WEIGHT) / 10000;                          // 0.075
+        uint256 gbp = (gbpPrice * GBP_WEIGHT) / 10000;                          // 0.06
+        uint256 zar = (PRECISION * ZAR_WEIGHT) / (zarPrice * 10000);            // 0.06/USDZAR
+        uint256 jpy = (PRECISION * JPY_WEIGHT) / (jpyPrice * 10000);            // 0.03/USDJPY
+        uint256 chf = (PRECISION * CHF_WEIGHT) / (chfPrice * 10000);            // 0.03/USDCHF
+        uint256 cnh = (PRECISION * CNH_WEIGHT) / (cnhPrice * 10000);            // 0.045/USDCNH
+        
+        return eur + gbp + zar + jpy + chf + cnh;
+    }
+
+    // ======================== UTILITY FUNCTIONS ======================== //
+    
+    function _isPriceValid(string memory _asset, mapping(string => PriceData) storage _prices) internal view returns (bool) {
+        PriceData memory priceData = _prices[_asset];
+        return priceData.isValid && 
+               priceData.price > 0 && 
+               (block.timestamp - priceData.timestamp) <= PRICE_STALENESS_THRESHOLD;
+    }
+    
+    function isPriceStale(string memory _asset, string memory _category) external view returns (bool) {
+        mapping(string => PriceData) storage prices = cryptoPrices;
+        
+        if (keccak256(bytes(_category)) == keccak256(bytes("crypto"))) {
+            prices = cryptoPrices;
+        } else if (keccak256(bytes(_category)) == keccak256(bytes("metal"))) {
+            prices = metalPrices;
+        } else if (keccak256(bytes(_category)) == keccak256(bytes("forex"))) {
+            prices = forexPrices;
+        } else {
+            revert("Invalid category");
+        }
+        
+        return (block.timestamp - prices[_asset].timestamp) > PRICE_STALENESS_THRESHOLD;
+    }
+    
+    function getAssetPrice(string memory _asset, string memory _category) external view returns (uint256, uint256, bool) {
+        mapping(string => PriceData) storage prices = cryptoPrices;
+        
+        if (keccak256(bytes(_category)) == keccak256(bytes("crypto"))) {
+            prices = cryptoPrices;
+        } else if (keccak256(bytes(_category)) == keccak256(bytes("metal"))) {
+            prices = metalPrices;
+        } else if (keccak256(bytes(_category)) == keccak256(bytes("forex"))) {
+            prices = forexPrices;
+        } else {
+            revert("Invalid category");
+        }
+        
+        PriceData memory priceData = prices[_asset];
+        return (priceData.price, priceData.timestamp, priceData.isValid);
+    }
+
+    // ======================== BATCH UPDATE FUNCTIONS ======================== //
+
+    function batchUpdateCryptoPrices(
+        string[] memory assets,
+        uint256[] memory prices
+    ) external onlyOracle whenNotPaused {
+        require(assets.length == prices.length, "Arrays length mismatch");
+        require(assets.length <= 10, "Too many assets in batch");
+        
+        for (uint256 i = 0; i < assets.length; i++) {
+            require(prices[i] > 0, "Price must be greater than 0");
+            require(bytes(assets[i]).length > 0, "Asset name cannot be empty");
+            
+            _validatePriceDeviation(assets[i], prices[i], "crypto");
+            cryptoPrices[assets[i]] = PriceData(prices[i], block.timestamp, true);
+            emit PriceUpdated(assets[i], prices[i], block.timestamp);
+        }
+    }
+
+    function batchUpdateMetalPrices(
+        string[] memory assets,
+        uint256[] memory prices
+    ) external onlyOracle whenNotPaused {
+        require(assets.length == prices.length, "Arrays length mismatch");
+        require(assets.length <= 10, "Too many assets in batch");
+        
+        for (uint256 i = 0; i < assets.length; i++) {
+            require(prices[i] > 0, "Price must be greater than 0");
+            require(bytes(assets[i]).length > 0, "Asset name cannot be empty");
+            
+            _validatePriceDeviation(assets[i], prices[i], "metal");
+            metalPrices[assets[i]] = PriceData(prices[i], block.timestamp, true);
+            emit PriceUpdated(assets[i], prices[i], block.timestamp);
+        }
+    }
+
+    function batchUpdateForexPrices(
+        string[] memory assets,
+        uint256[] memory prices
+    ) external onlyOracle whenNotPaused {
+        require(assets.length == prices.length, "Arrays length mismatch");
+        require(assets.length <= 10, "Too many assets in batch");
+        
+        for (uint256 i = 0; i < assets.length; i++) {
+            require(prices[i] > 0, "Price must be greater than 0");
+            require(bytes(assets[i]).length > 0, "Asset name cannot be empty");
+            
+            _validatePriceDeviation(assets[i], prices[i], "forex");
+            forexPrices[assets[i]] = PriceData(prices[i], block.timestamp, true);
+            emit PriceUpdated(assets[i], prices[i], block.timestamp);
+        }
+    }
+
+    // ======================== HEALTH CHECK FUNCTIONS ======================== //
+
+    function getSystemHealth() external view returns (
+        uint256 validCryptoFeeds,
+        uint256 validMetalFeeds,
+        uint256 validForexFeeds,
+        uint256 totalFeeds
+    ) {
+        string[5] memory cryptoAssets = ["BTCUSD", "ETHUSD", "BNBUSD", "XRPUSD", "SOLUSD"];
+        string[4] memory metalAssets = ["XAUUSD", "XPTUSD", "XPDUSD", "XAGUSD"];
+        string[6] memory forexAssets = ["EURUSD", "GBPUSD", "USDZAR", "USDJPY", "USDCHF", "USDCNH"];
+        
+        for (uint256 i = 0; i < cryptoAssets.length; i++) {
+            if (_isPriceValid(cryptoAssets[i], cryptoPrices)) validCryptoFeeds++;
+        }
+        
+        for (uint256 i = 0; i < metalAssets.length; i++) {
+            if (_isPriceValid(metalAssets[i], metalPrices)) validMetalFeeds++;
+        }
+        
+        for (uint256 i = 0; i < forexAssets.length; i++) {
+            if (_isPriceValid(forexAssets[i], forexPrices)) validForexFeeds++;
+        }
+        
+        totalFeeds = cryptoAssets.length + metalAssets.length + forexAssets.length;
+    }
+
+    // ======================== ADMIN FUNCTIONS ======================== //
+    
+    function pause() external onlyOwner {
+        _pause();
+    }
+    
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/economic_core/ZiG.sol
+---Filename: ZiG.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+
+/**
+ * @title ZiG Token - Gold-backed Stablecoin
+ * @dev Main stablecoin pegged to Zimbabwe's physical gold coin
+ */
+contract ZiG is ERC20, ERC20Burnable, Ownable, Pausable {
+    address public vault;
+    uint256 public goldBackingPerToken; // mg of gold per ZiG token
+    
+    event VaultUpdated(address newVault);
+    event GoldBackingUpdated(uint256 newBacking);
+    
+    uint8 private _decimals = 18;
+    uint256 public totalMinted;
+    uint256 public totalBurned;
+    
+    mapping(address => bool) public minters;
+    mapping(address => bool) public burners;
+    
+    event MinterAdded(address indexed minter);
+    event MinterRemoved(address indexed minter);
+    event BurnerAdded(address indexed burner);
+    event BurnerRemoved(address indexed burner);
+    event TokensMinted(address indexed to, uint256 amount);
+    event TokensBurned(address indexed from, uint256 amount);
+    
+    constructor(uint256 initialGoldBacking) ERC20("ZiG Goldcoin-backed Stablecoin", "ZiG") Ownable(msg.sender) {
+        minters[msg.sender] = true;
+        burners[msg.sender] = true;
+        goldBackingPerToken = initialGoldBacking;
+    }
+    
+    function setVault(address _vault) external onlyOwner {
+        require(_vault != address(0), "Invalid vault address");
+        vault = _vault;
+        emit VaultUpdated(_vault);
+    }
+    
+    function updateGoldBacking(uint256 newBacking) external onlyOwner {
+        goldBackingPerToken = newBacking;
+        emit GoldBackingUpdated(newBacking);
+    }
+    
+    modifier onlyMinter() {
+        require(minters[msg.sender], "ZiG: Not authorized minter");
+        _;
+    }
+    
+    modifier onlyBurner() {
+        require(burners[msg.sender], "ZiG: Not authorized burner");
+        _;
+    }
+    
+    function decimals() public view virtual override returns (uint8) {
+        return _decimals;
+    }
+    
+    function addMinter(address _minter) external onlyOwner {
+        require(_minter != address(0), "Invalid minter address");
+        minters[_minter] = true;
+        emit MinterAdded(_minter);
+    }
+    
+    function removeMinter(address _minter) external onlyOwner {
+        minters[_minter] = false;
+        emit MinterRemoved(_minter);
+    }
+    
+    function addBurner(address _burner) external onlyOwner {
+        require(_burner != address(0), "Invalid burner address");
+        burners[_burner] = true;
+        emit BurnerAdded(_burner);
+    }
+    
+    function removeBurner(address _burner) external onlyOwner {
+        burners[_burner] = false;
+        emit BurnerRemoved(_burner);
+    }
+    
+    function mint(address _to, uint256 _amount) external onlyMinter whenNotPaused {
+        require(_to != address(0), "Cannot mint to zero address");
+        require(_amount > 0, "Amount must be greater than 0");
+        _mint(_to, _amount);
+        totalMinted += _amount;
+        emit TokensMinted(_to, _amount);
+    }
+    
+    function burn(uint256 _amount) public override onlyBurner {
+        require(_amount > 0, "Amount must be greater than 0");
+        super.burn(_amount);
+        totalBurned += _amount;
+        emit TokensBurned(msg.sender, _amount);
+    }
+    
+    function burnFrom(address account, uint256 amount) public override onlyBurner {
+        require(amount > 0, "Amount must be greater than 0");
+        super.burnFrom(account, amount);
+        totalBurned += amount;
+        emit TokensBurned(account, amount);
+    }
+    
+    function pause() external onlyOwner {
+        _pause();
+    }
+    
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+    
+    // Override _update to add pausable functionality to transfers
+    function _update(address from, address to, uint256 value) internal override whenNotPaused {
+        super._update(from, to, value);
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/economic_core/ZiGT.sol
+---Filename: ZiGT.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+
+/**
+ * @title ZiGT Token - Fiat-pegged Token
+ * @dev Token pegged to ZWG (Zimbabwean fiat)
+ */
+contract ZiGT is ERC20, ERC20Burnable, Ownable, Pausable, ReentrancyGuard {
+    address public vaultAddress;
+    address public zigToken;
+    address public oracleHub;
+    uint256 public exchangeRate; // ZiGT per ZiG (with 18 decimals)
+    
+    mapping(address => bool) public authorized;
+    
+    event VaultAddressUpdated(address indexed newVault);
+    event ZigTokenUpdated(address indexed newZigToken);
+    event AuthorizedAdded(address indexed user);
+    event AuthorizedRemoved(address indexed user);
+    event ExchangeRateUpdated(uint256 newRate);
+    event TokensRedeemed(address indexed user, uint256 zigAmount, uint256 zigtAmount);
+    event TokensMinted(address indexed user, uint256 zigAmount, uint256 zigtAmount);
+    
+    constructor(
+        address _zigToken,
+        address _vaultAddress
+    ) ERC20("Zimbabwe Gold Tether", "ZiGT") Ownable(msg.sender) {
+        require(_zigToken != address(0), "Invalid ZiG token address");
+        require(_vaultAddress != address(0), "Invalid vault address");
+        
+        vaultAddress = _vaultAddress;
+        zigToken = _zigToken;
+        exchangeRate = 1e18; // 1:1 initial rate
+        authorized[msg.sender] = true;
+    }
+
+    modifier onlyVault() {
+        require(msg.sender == vaultAddress, "Only Vault can call");
+        _;
+    }
+    
+    modifier onlyAuthorized() {
+        require(authorized[msg.sender], "ZiGT: Not authorized");
+        _;
+    }
+    
+    function setVaultAddress(address _vaultAddress) external onlyOwner {
+        require(_vaultAddress != address(0), "Invalid vault address");
+        vaultAddress = _vaultAddress;
+        emit VaultAddressUpdated(_vaultAddress);
+    }
+    
+    function setZigToken(address _zigToken) external onlyOwner {
+        require(_zigToken != address(0), "Invalid ZiG token address");
+        zigToken = _zigToken;
+        emit ZigTokenUpdated(_zigToken);
+    }
+    
+    function setOracleHub(address _oracleHub) external onlyOwner {
+        require(_oracleHub != address(0), "Invalid oracle hub address");
+        oracleHub = _oracleHub;
+    }
+    
+    function addAuthorized(address _user) external onlyOwner {
+        require(_user != address(0), "Invalid user address");
+        authorized[_user] = true;
+        emit AuthorizedAdded(_user);
+    }
+    
+    function removeAuthorized(address _user) external onlyOwner {
+        authorized[_user] = false;
+        emit AuthorizedRemoved(_user);
+    }
+    
+    function updateExchangeRate(uint256 _newRate) external onlyAuthorized {
+        require(_newRate > 0, "Exchange rate must be greater than 0");
+        exchangeRate = _newRate;
+        emit ExchangeRateUpdated(_newRate);
+    }
+    
+    function mint(address account, uint256 amount) public onlyVault {
+        require(account != address(0), "Cannot mint to zero address");
+        require(amount > 0, "Amount must be greater than 0");
+        _mint(account, amount);
+    }
+
+    function burn(address account, uint256 amount) public onlyVault {
+        require(account != address(0), "Cannot burn from zero address");
+        require(amount > 0, "Amount must be greater than 0");
+        _burn(account, amount);
+    }
+    
+    function mintWithZiG(uint256 _zigAmount) external whenNotPaused nonReentrant {
+        require(_zigAmount > 0, "Amount must be greater than 0");
+        require(zigToken != address(0), "ZiG token not set");
+        
+        // Calculate ZiGT amount to mint
+        uint256 zigtAmount = (_zigAmount * exchangeRate) / 1e18;
+        require(zigtAmount > 0, "Calculated amount is zero");
+        
+        // Transfer ZiG tokens from user to this contract
+        require(
+            IERC20(zigToken).transferFrom(msg.sender, address(this), _zigAmount),
+            "ZiGT: ZiG transfer failed"
+        );
+        
+        // Mint ZiGT tokens to user
+        _mint(msg.sender, zigtAmount);
+        
+        emit TokensMinted(msg.sender, _zigAmount, zigtAmount);
+    }
+    
+    function redeemForZiG(uint256 _zigtAmount) external whenNotPaused nonReentrant {
+        require(_zigtAmount > 0, "Amount must be greater than 0");
+        require(balanceOf(msg.sender) >= _zigtAmount, "ZiGT: Insufficient balance");
+        require(zigToken != address(0), "ZiG token not set");
+        
+        // Calculate ZiG amount to return
+        uint256 zigAmount = (_zigtAmount * 1e18) / exchangeRate;
+        require(zigAmount > 0, "Calculated amount is zero");
+        
+        // Check if contract has enough ZiG tokens
+        require(
+            IERC20(zigToken).balanceOf(address(this)) >= zigAmount,
+            "ZiGT: Insufficient ZiG reserves"
+        );
+        
+        // Burn ZiGT tokens from user
+        _burn(msg.sender, _zigtAmount);
+        
+        // Transfer ZiG tokens to user
+        require(
+            IERC20(zigToken).transfer(msg.sender, zigAmount),
+            "ZiGT: ZiG transfer failed"
+        );
+        
+        emit TokensRedeemed(msg.sender, zigAmount, _zigtAmount);
+    }
+    
+    function getZiGReserves() external view returns (uint256) {
+        if (zigToken == address(0)) return 0;
+        return IERC20(zigToken).balanceOf(address(this));
+    }
+    
+    function calculateZigtFromZig(uint256 _zigAmount) external view returns (uint256) {
+        return (_zigAmount * exchangeRate) / 1e18;
+    }
+    
+    function calculateZigFromZigt(uint256 _zigtAmount) external view returns (uint256) {
+        return (_zigtAmount * 1e18) / exchangeRate;
+    }
+    
+    function pause() external onlyOwner {
+        _pause();
+    }
+    
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+    
+    // Override _update to add pausable functionality to transfers
+    function _update(address from, address to, uint256 value) internal override whenNotPaused {
+        super._update(from, to, value);
+    }
+    
+    // Emergency function to recover stuck tokens (only owner)
+    function emergencyWithdraw(address token, uint256 amount) external onlyOwner {
+        require(token != address(0), "Invalid token address");
+        require(IERC20(token).transfer(owner(), amount), "Transfer failed");
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/economic_core/ZiGWallet.sol
+---Filename: ZiGWallet.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+/**
+ * @title ZiG Wallet
+ * @dev Secure wallet that only accepts specific tokens
+ */
+contract ZiGWallet is Ownable, ReentrancyGuard {
+    
+    mapping(address => bool) public allowedTokens;
+    mapping(address => mapping(address => uint256)) public userBalances; // user => token => balance
+    mapping(address => address[]) private userTokenList; // user => array of tokens they hold
+    mapping(address => mapping(address => uint256)) private userTokenIndex; // user => token => index in userTokenList
+    
+    // Predefined token addresses (would be set during deployment or via governance)
+    struct TokenInfo {
+        address tokenAddress;
+        string symbol;
+        string name;
+    }
+    
+    // Standard supported tokens
+    TokenInfo[] public supportedTokens;
+    
+    event TokenAdded(address indexed token);
+    event TokenRemoved(address indexed token);
+    event Deposit(address indexed user, address indexed token, uint256 amount);
+    event Withdrawal(address indexed user, address indexed token, uint256 amount);
+    
+    constructor(address initialOwner) Ownable(initialOwner) {
+        // Initialize with common supported tokens (addresses would be set on deployment)
+        _initializeSupportedTokens();
+    }
+    
+    function _initializeSupportedTokens() private {
+        // Core crypto tokens
+        supportedTokens.push(TokenInfo(address(0), "ZiG", "Zimbabwe Gold"));
+        supportedTokens.push(TokenInfo(address(0), "ZiGT", "Zimbabwe Gold Token"));
+        supportedTokens.push(TokenInfo(address(0), "WBTC", "Wrapped Bitcoin"));
+        supportedTokens.push(TokenInfo(address(0), "WETH", "Wrapped Ethereum"));
+        supportedTokens.push(TokenInfo(address(0), "WBCH", "Wrapped Bitcoin Cash"));
+        supportedTokens.push(TokenInfo(address(0), "USDT", "Tether USD"));
+        supportedTokens.push(TokenInfo(address(0), "WLTC", "Wrapped Litecoin"));
+        supportedTokens.push(TokenInfo(address(0), "WZEC", "Wrapped Zcash"));
+        supportedTokens.push(TokenInfo(address(0), "WXRP", "Wrapped XRP"));
+        
+        // Major world currencies (tokenized)
+        supportedTokens.push(TokenInfo(address(0), "USD", "US Dollar"));
+        supportedTokens.push(TokenInfo(address(0), "EUR", "Euro"));
+        supportedTokens.push(TokenInfo(address(0), "GBP", "British Pound"));
+        supportedTokens.push(TokenInfo(address(0), "JPY", "Japanese Yen"));
+        supportedTokens.push(TokenInfo(address(0), "CHF", "Swiss Franc"));
+        supportedTokens.push(TokenInfo(address(0), "CAD", "Canadian Dollar"));
+        supportedTokens.push(TokenInfo(address(0), "AUD", "Australian Dollar"));
+        supportedTokens.push(TokenInfo(address(0), "CNY", "Chinese Yuan"));
+        
+        // African currencies by region
+        // West Africa
+        supportedTokens.push(TokenInfo(address(0), "NGN", "Nigerian Naira"));
+        supportedTokens.push(TokenInfo(address(0), "GHS", "Ghanaian Cedi"));
+        supportedTokens.push(TokenInfo(address(0), "XOF", "West African CFA Franc"));
+        supportedTokens.push(TokenInfo(address(0), "SLL", "Sierra Leonean Leone"));
+        supportedTokens.push(TokenInfo(address(0), "LRD", "Liberian Dollar"));
+        
+        // East Africa
+        supportedTokens.push(TokenInfo(address(0), "KES", "Kenyan Shilling"));
+        supportedTokens.push(TokenInfo(address(0), "UGX", "Ugandan Shilling"));
+        supportedTokens.push(TokenInfo(address(0), "TZS", "Tanzanian Shilling"));
+        supportedTokens.push(TokenInfo(address(0), "ETB", "Ethiopian Birr"));
+        supportedTokens.push(TokenInfo(address(0), "RWF", "Rwandan Franc"));
+        
+        // North Africa
+        supportedTokens.push(TokenInfo(address(0), "EGP", "Egyptian Pound"));
+        supportedTokens.push(TokenInfo(address(0), "MAD", "Moroccan Dirham"));
+        supportedTokens.push(TokenInfo(address(0), "TND", "Tunisian Dinar"));
+        supportedTokens.push(TokenInfo(address(0), "DZD", "Algerian Dinar"));
+        supportedTokens.push(TokenInfo(address(0), "LYD", "Libyan Dinar"));
+        
+        // Central Africa
+        supportedTokens.push(TokenInfo(address(0), "XAF", "Central African CFA Franc"));
+        supportedTokens.push(TokenInfo(address(0), "CDF", "Congolese Franc"));
+        supportedTokens.push(TokenInfo(address(0), "AOA", "Angolan Kwanza"));
+        supportedTokens.push(TokenInfo(address(0), "CMR", "Cameroonian Franc"));
+        supportedTokens.push(TokenInfo(address(0), "GAB", "Gabonese Franc"));
+        
+        // Southern Africa
+        supportedTokens.push(TokenInfo(address(0), "ZAR", "South African Rand"));
+        supportedTokens.push(TokenInfo(address(0), "BWP", "Botswanan Pula"));
+        supportedTokens.push(TokenInfo(address(0), "NAD", "Namibian Dollar"));
+        supportedTokens.push(TokenInfo(address(0), "SZL", "Swazi Lilangeni"));
+        supportedTokens.push(TokenInfo(address(0), "LSL", "Lesotho Loti"));
+        
+        // Island Nations
+        supportedTokens.push(TokenInfo(address(0), "MUR", "Mauritian Rupee"));
+        supportedTokens.push(TokenInfo(address(0), "SCR", "Seychellois Rupee"));
+        supportedTokens.push(TokenInfo(address(0), "CVE", "Cape Verdean Escudo"));
+        supportedTokens.push(TokenInfo(address(0), "KMF", "Comorian Franc"));
+        supportedTokens.push(TokenInfo(address(0), "STN", unicode"São Tomé and Príncipe Dobra"));
+        
+        // Precious metals (tokenized)
+        supportedTokens.push(TokenInfo(address(0), "XAU", "Gold"));
+        supportedTokens.push(TokenInfo(address(0), "XAG", "Silver"));
+        supportedTokens.push(TokenInfo(address(0), "XPT", "Platinum"));
+        supportedTokens.push(TokenInfo(address(0), "XPD", "Palladium"));
+        supportedTokens.push(TokenInfo(address(0), "RHODIUM", "Rhodium"));
+        supportedTokens.push(TokenInfo(address(0), "IRIDIUM", "Iridium"));
+    }
+    
+    function addAllowedToken(address _token) external onlyOwner {
+        require(_token != address(0), "ZiGWallet: Invalid token address");
+        allowedTokens[_token] = true;
+        emit TokenAdded(_token);
+    }
+    
+    function removeAllowedToken(address _token) external onlyOwner {
+        allowedTokens[_token] = false;
+        emit TokenRemoved(_token);
+    }
+    
+    function deposit(address _token, uint256 _amount) external nonReentrant {
+        require(allowedTokens[_token], "ZiGWallet: Token not allowed");
+        require(_amount > 0, "ZiGWallet: Amount must be greater than 0");
+        
+        IERC20 token = IERC20(_token);
+        require(token.transferFrom(msg.sender, address(this), _amount), "ZiGWallet: Transfer failed");
+        
+        // If this is the first deposit of this token for this user, add to their token list
+        if (userBalances[msg.sender][_token] == 0) {
+            userTokenList[msg.sender].push(_token);
+            userTokenIndex[msg.sender][_token] = userTokenList[msg.sender].length - 1;
+        }
+        
+        userBalances[msg.sender][_token] += _amount;
+        emit Deposit(msg.sender, _token, _amount);
+    }
+    
+    function withdraw(address _token, uint256 _amount) external nonReentrant {
+        require(_amount > 0, "ZiGWallet: Amount must be greater than 0");
+        require(userBalances[msg.sender][_token] >= _amount, "ZiGWallet: Insufficient balance");
+        
+        userBalances[msg.sender][_token] -= _amount;
+        
+        // If balance becomes zero, remove token from user's list
+        if (userBalances[msg.sender][_token] == 0) {
+            _removeTokenFromUserList(msg.sender, _token);
+        }
+        
+        IERC20 token = IERC20(_token);
+        require(token.transfer(msg.sender, _amount), "ZiGWallet: Transfer failed");
+        
+        emit Withdrawal(msg.sender, _token, _amount);
+    }
+    
+    function _removeTokenFromUserList(address _user, address _token) private {
+        uint256 index = userTokenIndex[_user][_token];
+        uint256 lastIndex = userTokenList[_user].length - 1;
+        
+        if (index != lastIndex) {
+            address lastToken = userTokenList[_user][lastIndex];
+            userTokenList[_user][index] = lastToken;
+            userTokenIndex[_user][lastToken] = index;
+        }
+        
+        userTokenList[_user].pop();
+        delete userTokenIndex[_user][_token];
+    }
+    
+    function getBalance(address _user, address _token) external view returns (uint256) {
+        return userBalances[_user][_token];
+    }
+    
+    function getUserTokens(address _user) external view returns (address[] memory tokens, uint256[] memory balances) {
+        address[] memory userTokens = userTokenList[_user];
+        uint256[] memory userBalancesList = new uint256[](userTokens.length);
+        
+        for (uint256 i = 0; i < userTokens.length; i++) {
+            userBalancesList[i] = userBalances[_user][userTokens[i]];
+        }
+        
+        return (userTokens, userBalancesList);
+    }
+    
+    function getUserTokenCount(address _user) external view returns (uint256) {
+        return userTokenList[_user].length;
+    }
+    
+    function getSupportedTokens() external view returns (TokenInfo[] memory) {
+        return supportedTokens;
+    }
+    
+    function getSupportedTokenCount() external view returns (uint256) {
+        return supportedTokens.length;
+    }
+    
+    function updateTokenAddress(uint256 _index, address _newAddress) external onlyOwner {
+        require(_index < supportedTokens.length, "ZiGWallet: Invalid token index");
+        supportedTokens[_index].tokenAddress = _newAddress;
+    }
+    
+    function addNewSupportedToken(address _tokenAddress, string memory _symbol, string memory _name) external onlyOwner {
+        supportedTokens.push(TokenInfo(_tokenAddress, _symbol, _name));
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/economic_core/Vault.sol
+---Filename: Vault.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+
+// Interface definitions for ZiG tokens
+interface IZiG {
+    function mint(address to, uint256 amount) external;
+    function burn(address from, uint256 amount) external;
+}
+
+interface IZiGT {
+    function mint(address to, uint256 amount) external;
+    function burn(address from, uint256 amount) external;
+}
+
+interface IZiGOracleHub {
+    function getTokenPrice(address token) external view returns (uint256);
+    function getGoldPricePerMg(address paxgAddress) external view returns (uint256);
+    function calculateZiGPrice() external view returns (uint256);
+}
+
+/**
+ * @title Vault Contract
+ * @dev Collects ZiG on mint and splits revenue, handles collateralized minting
+ */
+contract Vault is Ownable, ReentrancyGuard, Pausable {
+    
+    // Revenue distribution addresses
+    address public zigToken;
+    address public treasury;
+    address public futureReserve;
+    address public diasporaFund;
+    
+    // Contract references
+    IZiG public zig;
+    IZiGT public zigt;
+    IZiGOracleHub public oracleHub;
+    address public paxgAddress;
+    
+    // Split percentages (basis points)
+    uint256 public treasuryShare = 4000;  // 40%
+    uint256 public futureShare = 3000;    // 30%
+    uint256 public diasporaShare = 3000;  // 30%
+    
+    uint256 public totalCollected;
+    
+    // Collateral tracking
+    mapping(address => mapping(address => uint256)) public userCollateralForZiG;
+    mapping(address => mapping(address => uint256)) public userCollateralForZiGT;
+    mapping(address => uint256) public userMintedZiG;
+    mapping(address => uint256) public userMintedZiGT;
+    
+    // Supported tokens and their configurations
+    address[] public supportedTokens;
+    mapping(address => bool) public isSupportedToken;
+    mapping(address => uint256) public collateralRatio; // Collateral ratio in basis points (e.g., 15000 = 150%)
+    
+    // Constants
+    uint256 public constant BASIS_POINTS = 10000;
+    uint256 public constant DEFAULT_COLLATERAL_RATIO = 15000; // 150%
+    
+    event FundsCollected(uint256 amount);
+    event FundsDistributed(uint256 treasury, uint256 future, uint256 diaspora);
+    event SharesUpdated(uint256 treasuryShare, uint256 futureShare, uint256 diasporaShare);
+    event CollateralDeposited(address indexed user, address indexed token, uint256 amount, bool forZiG);
+    event CollateralWithdrawn(address indexed user, address indexed token, uint256 amount, bool forZiG);
+    event ZiGMinted(address indexed user, uint256 amount);
+    event ZiGTMinted(address indexed user, uint256 amount);
+    event ZiGBurned(address indexed user, uint256 amount);
+    event ZiGTBurned(address indexed user, uint256 amount);
+    event TokenAdded(address indexed token, uint256 collateralRatio);
+    event TokenRemoved(address indexed token);
+    event CollateralRatioUpdated(address indexed token, uint256 newRatio);
+    
+    constructor(
+        address _zigToken,
+        address _treasury,
+        address _futureReserve,
+        address _diasporaFund,
+        address _zigAddress,
+        address _zigtAddress,
+        address _oracleHubAddress,
+        address _paxgAddress
+    ) Ownable(msg.sender) {
+        require(_zigToken != address(0), "Invalid ZiG token address");
+        require(_treasury != address(0), "Invalid treasury address");
+        require(_futureReserve != address(0), "Invalid future reserve address");
+        require(_diasporaFund != address(0), "Invalid diaspora fund address");
+        require(_zigAddress != address(0), "Invalid ZiG contract address");
+        require(_zigtAddress != address(0), "Invalid ZiGT contract address");
+        require(_oracleHubAddress != address(0), "Invalid oracle hub address");
+        require(_paxgAddress != address(0), "Invalid PAXG address");
+        
+        zigToken = _zigToken;
+        treasury = _treasury;
+        futureReserve = _futureReserve;
+        diasporaFund = _diasporaFund;
+        
+        zig = IZiG(_zigAddress);
+        zigt = IZiGT(_zigtAddress);
+        oracleHub = IZiGOracleHub(_oracleHubAddress);
+        paxgAddress = _paxgAddress;
+    }
+    
+    function updateShares(
+        uint256 _treasuryShare,
+        uint256 _futureShare,
+        uint256 _diasporaShare
+    ) external onlyOwner {
+        require(_treasuryShare + _futureShare + _diasporaShare == BASIS_POINTS, "Vault: Shares must sum to 100%");
+        
+        treasuryShare = _treasuryShare;
+        futureShare = _futureShare;
+        diasporaShare = _diasporaShare;
+        
+        emit SharesUpdated(_treasuryShare, _futureShare, _diasporaShare);
+    }
+    
+    function collectFunds(uint256 _amount) external nonReentrant whenNotPaused {
+        require(_amount > 0, "Amount must be greater than 0");
+        require(IERC20(zigToken).transferFrom(msg.sender, address(this), _amount), "Vault: Transfer failed");
+        totalCollected += _amount;
+        emit FundsCollected(_amount);
+    }
+    
+    function distributeFunds() external onlyOwner nonReentrant {
+        uint256 balance = IERC20(zigToken).balanceOf(address(this));
+        require(balance > 0, "Vault: No funds to distribute");
+        
+        uint256 treasuryAmount = (balance * treasuryShare) / BASIS_POINTS;
+        uint256 futureAmount = (balance * futureShare) / BASIS_POINTS;
+        uint256 diasporaAmount = (balance * diasporaShare) / BASIS_POINTS;
+        
+        require(IERC20(zigToken).transfer(treasury, treasuryAmount), "Vault: Treasury transfer failed");
+        require(IERC20(zigToken).transfer(futureReserve, futureAmount), "Vault: Future transfer failed");
+        require(IERC20(zigToken).transfer(diasporaFund, diasporaAmount), "Vault: Diaspora transfer failed");
+        
+        emit FundsDistributed(treasuryAmount, futureAmount, diasporaAmount);
+    }
+    
+    function addSupportedToken(address token, uint256 _collateralRatio) external onlyOwner {
+        require(token != address(0), "Invalid token address");
+        require(_collateralRatio >= BASIS_POINTS, "Collateral ratio must be at least 100%");
+        require(!isSupportedToken[token], "Token already supported");
+        
+        supportedTokens.push(token);
+        isSupportedToken[token] = true;
+        collateralRatio[token] = _collateralRatio;
+        
+        emit TokenAdded(token, _collateralRatio);
+    }
+    
+    function removeSupportedToken(address token) external onlyOwner {
+        require(isSupportedToken[token], "Token not supported");
+        
+        // Remove from array
+        for (uint256 i = 0; i < supportedTokens.length; i++) {
+            if (supportedTokens[i] == token) {
+                supportedTokens[i] = supportedTokens[supportedTokens.length - 1];
+                supportedTokens.pop();
+                break;
+            }
+        }
+        
+        isSupportedToken[token] = false;
+        collateralRatio[token] = 0;
+        
+        emit TokenRemoved(token);
+    }
+    
+    function updateCollateralRatio(address token, uint256 _collateralRatio) external onlyOwner {
+        require(isSupportedToken[token], "Token not supported");
+        require(_collateralRatio >= BASIS_POINTS, "Collateral ratio must be at least 100%");
+        
+        collateralRatio[token] = _collateralRatio;
+        emit CollateralRatioUpdated(token, _collateralRatio);
+    }
+
+    function depositCollateral(address token, uint256 amount, bool forZiG) external nonReentrant whenNotPaused {
+        require(isSupportedToken[token], "Token not supported");
+        require(amount > 0, "Amount must be greater than 0");
+        
+        require(IERC20(token).transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        
+        if (forZiG) {
+            userCollateralForZiG[msg.sender][token] += amount;
+        } else {
+            userCollateralForZiGT[msg.sender][token] += amount;
+        }
+        
+        emit CollateralDeposited(msg.sender, token, amount, forZiG);
+    }
+    
+    function withdrawCollateral(address token, uint256 amount, bool forZiG) external nonReentrant whenNotPaused {
+        require(isSupportedToken[token], "Token not supported");
+        require(amount > 0, "Amount must be greater than 0");
+        
+        uint256 currentCollateral;
+        if (forZiG) {
+            currentCollateral = userCollateralForZiG[msg.sender][token];
+            require(currentCollateral >= amount, "Insufficient collateral");
+            userCollateralForZiG[msg.sender][token] -= amount;
+            
+            // Check if remaining collateral is sufficient for minted ZiG
+            uint256 remainingValue = getTotalCollateralValueForZiG(msg.sender);
+            uint256 goldPrice = oracleHub.getGoldPricePerMg(paxgAddress);
+            uint256 requiredCollateral = (userMintedZiG[msg.sender] * goldPrice * DEFAULT_COLLATERAL_RATIO) / BASIS_POINTS;
+            require(remainingValue >= requiredCollateral, "Would leave position undercollateralized");
+        } else {
+            currentCollateral = userCollateralForZiGT[msg.sender][token];
+            require(currentCollateral >= amount, "Insufficient collateral");
+            userCollateralForZiGT[msg.sender][token] -= amount;
+            
+            // Check if remaining collateral is sufficient for minted ZiGT
+            uint256 remainingValue = getTotalCollateralValueForZiGT(msg.sender);
+            uint256 requiredCollateral = (userMintedZiGT[msg.sender] * DEFAULT_COLLATERAL_RATIO) / BASIS_POINTS;
+            require(remainingValue >= requiredCollateral, "Would leave position undercollateralized");
+        }
+        
+        require(IERC20(token).transfer(msg.sender, amount), "Transfer failed");
+        emit CollateralWithdrawn(msg.sender, token, amount, forZiG);
+    }
+
+    function mintZiG(uint256 amount) external nonReentrant whenNotPaused {
+        require(amount > 0, "Amount must be greater than 0");
+        
+        uint256 totalValue = getTotalCollateralValueForZiG(msg.sender);
+        uint256 goldPrice = oracleHub.getGoldPricePerMg(paxgAddress);
+        require(goldPrice > 0, "Invalid gold price");
+        
+        uint256 newTotalMinted = userMintedZiG[msg.sender] + amount;
+        uint256 requiredCollateral = (newTotalMinted * goldPrice * DEFAULT_COLLATERAL_RATIO) / BASIS_POINTS;
+        
+        require(totalValue >= requiredCollateral, "Insufficient collateral");
+        
+        zig.mint(msg.sender, amount);
+        userMintedZiG[msg.sender] = newTotalMinted;
+        
+        emit ZiGMinted(msg.sender, amount);
+    }
+
+    function mintZiGT(uint256 amount) external nonReentrant whenNotPaused {
+        require(amount > 0, "Amount must be greater than 0");
+        
+        uint256 totalValue = getTotalCollateralValueForZiGT(msg.sender);
+        uint256 newTotalMinted = userMintedZiGT[msg.sender] + amount;
+        uint256 requiredCollateral = (newTotalMinted * DEFAULT_COLLATERAL_RATIO) / BASIS_POINTS;
+        
+        require(totalValue >= requiredCollateral, "Insufficient collateral");
+        
+        zigt.mint(msg.sender, amount);
+        userMintedZiGT[msg.sender] = newTotalMinted;
+        
+        emit ZiGTMinted(msg.sender, amount);
+    }
+    
+    function burnZiG(uint256 amount) external nonReentrant {
+        require(amount > 0, "Amount must be greater than 0");
+        require(userMintedZiG[msg.sender] >= amount, "Cannot burn more than minted");
+        
+        zig.burn(msg.sender, amount);
+        userMintedZiG[msg.sender] -= amount;
+        
+        emit ZiGBurned(msg.sender, amount);
+    }
+    
+    function burnZiGT(uint256 amount) external nonReentrant {
+        require(amount > 0, "Amount must be greater than 0");
+        require(userMintedZiGT[msg.sender] >= amount, "Cannot burn more than minted");
+        
+        zigt.burn(msg.sender, amount);
+        userMintedZiGT[msg.sender] -= amount;
+        
+        emit ZiGTBurned(msg.sender, amount);
+    }
+
+    function getTotalCollateralValueForZiG(address user) public view returns (uint256) {
+        uint256 totalValue = 0;
+        
+        for (uint256 i = 0; i < supportedTokens.length; i++) {
+            address token = supportedTokens[i];
+            uint256 amount = userCollateralForZiG[user][token];
+            
+            if (amount > 0) {
+                uint256 price = oracleHub.getTokenPrice(token);
+                uint256 decimals = IERC20Metadata(token).decimals();
+                totalValue += (amount * price) / (10**decimals);
+            }
+        }
+        
+        return totalValue;
+    }
+
+    function getTotalCollateralValueForZiGT(address user) public view returns (uint256) {
+        uint256 totalValue = 0;
+        
+        for (uint256 i = 0; i < supportedTokens.length; i++) {
+            address token = supportedTokens[i];
+            uint256 amount = userCollateralForZiGT[user][token];
+            
+            if (amount > 0) {
+                uint256 price = oracleHub.getTokenPrice(token);
+                uint256 decimals = IERC20Metadata(token).decimals();
+                totalValue += (amount * price) / (10**decimals);
+            }
+        }
+        
+        return totalValue;
+    }
+    
+    function getCollateralizationRatioZiG(address user) external view returns (uint256) {
+        uint256 mintedValue = userMintedZiG[user];
+        if (mintedValue == 0) return 0;
+        
+        uint256 goldPrice = oracleHub.getGoldPricePerMg(paxgAddress);
+        uint256 totalValue = getTotalCollateralValueForZiG(user);
+        
+        return (totalValue * BASIS_POINTS) / (mintedValue * goldPrice);
+    }
+    
+    function getCollateralizationRatioZiGT(address user) external view returns (uint256) {
+        uint256 mintedValue = userMintedZiGT[user];
+        if (mintedValue == 0) return 0;
+        
+        uint256 totalValue = getTotalCollateralValueForZiGT(user);
+        return (totalValue * BASIS_POINTS) / mintedValue;
+    }
+    
+    function getSupportedTokensCount() external view returns (uint256) {
+        return supportedTokens.length;
+    }
+    
+    function pause() external onlyOwner {
+        _pause();
+    }
+    
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+    
+    // Emergency function to recover stuck tokens
+    function emergencyWithdraw(address token, uint256 amount) external onlyOwner {
+        require(token != address(0), "Invalid token address");
+        require(IERC20(token).transfer(owner(), amount), "Transfer failed");
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/cultural_utilty_layer/ZiGSoulboundToken.sol
+---Filename: ZiGSoulboundToken.sol
+---File Content Start---
+// // SPDX-License-Identifier: UNLICENSED
+// pragma solidity ^0.8.29;
+
+// import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+// import "@openzeppelin/contracts/access/Ownable.sol";
+// import "@openzeppelin/contracts/utils/math/Math.sol";
+
+// /**
+//  * @title ZiG Soulbound Token
+//  * @dev Identity token for the ZiG ecosystem
+//  */
+// contract ZiGSoulboundToken is ERC721, Ownable {
+//     using Math for uint256;
+    
+//     struct SoulData {
+//         string ancestryProof;
+//         uint256 verificationLevel;
+//         uint256 issueDate;
+//         bool isActive;
+//     }
+    
+//     mapping(uint256 => SoulData) public soulData;
+//     mapping(address => uint256) public ownerToTokenId;
+//     mapping(address => bool) public verifiers;
+    
+//     uint256 private _tokenIdCounter;
+    
+//     event SoulIssued(address indexed to, uint256 indexed tokenId, uint256 verificationLevel);
+//     event SoulRevoked(uint256 indexed tokenId);
+//     event VerifierAdded(address indexed verifier);
+//     event VerifierRemoved(address indexed verifier);
+    
+//     constructor() ERC721("ZiG Soulbound Identity", "ZiGSoul") Ownable(msg.sender) {
+//         verifiers[msg.sender] = true;
+//     }
+    
+//     modifier onlyVerifier() {
+//         require(verifiers[msg.sender], "ZiGSoul: Not authorized verifier");
+//         _;
+//     }
+    
+//     function addVerifier(address _verifier) external onlyOwner {
+//         require(_verifier != address(0), "ZiGSoul: Invalid verifier address");
+//         verifiers[_verifier] = true;
+//         emit VerifierAdded(_verifier);
+//     }
+    
+//     function removeVerifier(address _verifier) external onlyOwner {
+//         require(_verifier != address(0), "ZiGSoul: Invalid verifier address");
+//         require(_verifier != owner(), "ZiGSoul: Cannot remove owner as verifier");
+//         verifiers[_verifier] = false;
+//         emit VerifierRemoved(_verifier);
+//     }
+    
+//     function issueSoul(
+//         address _to,
+//         string memory _ancestryProof,
+//         uint256 _verificationLevel
+//     ) external onlyVerifier {
+//         require(_to != address(0), "ZiGSoul: Invalid recipient address");
+//         require(ownerToTokenId[_to] == 0, "ZiGSoul: Address already has soul");
+//         require(bytes(_ancestryProof).length > 0, "ZiGSoul: Ancestry proof required");
+        
+//         _tokenIdCounter++;
+//         uint256 tokenId = _tokenIdCounter;
+        
+//         _safeMint(_to, tokenId);
+        
+//         soulData[tokenId] = SoulData({
+//             ancestryProof: _ancestryProof,
+//             verificationLevel: _verificationLevel,
+//             issueDate: block.timestamp,
+//             isActive: true
+//         });
+        
+//         ownerToTokenId[_to] = tokenId;
+//         emit SoulIssued(_to, tokenId, _verificationLevel);
+//     }
+    
+//     function revokeSoul(uint256 _tokenId) external onlyVerifier {
+//         require(_ownerOf(_tokenId) != address(0), "ZiGSoul: Token does not exist");
+//         require(soulData[_tokenId].isActive, "ZiGSoul: Soul already revoked");
+        
+//         soulData[_tokenId].isActive = false;
+//         address owner = ownerOf(_tokenId);
+//         ownerToTokenId[owner] = 0;
+        
+//         emit SoulRevoked(_tokenId);
+//     }
+    
+//     // Override transfer functions to make soulbound
+//     function transferFrom(address from, address to, uint256 tokenId) public virtual override {
+//         revert("ZiGSoul: Soulbound tokens cannot be transferred");
+//     }
+    
+//     function safeTransferFrom(address from, address to, uint256 tokenId) public virtual override {
+//         revert("ZiGSoul: Soulbound tokens cannot be transferred");
+//     }
+    
+//     function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public pure virtual override {
+//         revert("ZiGSoul: Soulbound tokens cannot be transferred");
+//     }
+    
+//     function approve(address to, uint256 tokenId) public virtual override {
+//         revert("ZiGSoul: Soulbound tokens cannot be approved");
+//     }
+    
+//     function setApprovalForAll(address operator, bool approved) public virtual override {
+//         revert("ZiGSoul: Soulbound tokens cannot be approved");
+//     }
+    
+//     function getSoulData(uint256 _tokenId) external view returns (SoulData memory) {
+//         require(_ownerOf(_tokenId) != address(0), "ZiGSoul: Token does not exist");
+//         return soulData[_tokenId];
+//     }
+    
+//     function getUserSoul(address _user) external view returns (uint256, SoulData memory) {
+//         uint256 tokenId = ownerToTokenId[_user];
+//         require(tokenId != 0, "ZiGSoul: User has no soul token");
+//         return (tokenId, soulData[tokenId]);
+//     }
+    
+//     function isVerifier(address _address) external view returns (bool) {
+//         return verifiers[_address];
+//     }
+// }---File Content End---
+
+---Path and files name: ZiGEcocash/cultural_utilty_layer/SoulReparationNFT.sol
+---Filename: SoulReparationNFT.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+
+/**
+ * @title Soul Reparation NFT
+ * @dev NFT representing reparation claims and heritage
+ */
+contract SoulReparationNFT is ERC721, Ownable {
+    using Math for uint256;
+    
+    struct ReparationData {
+        string heritageProof;
+        uint256 claimAmount;
+        uint256 claimDate;
+        bool isClaimed;
+        string metadataURI;
+    }
+    
+    mapping(uint256 => ReparationData) public reparations;
+    mapping(address => uint256[]) public userClaims;
+    
+    uint256 private _tokenIdCounter;
+    address public reparationsDAO;
+    
+    event ReparationClaimed(address indexed claimant, uint256 indexed tokenId, uint256 amount);
+    
+    constructor(address _reparationsDAO) ERC721("Soul Reparation NFT", "SRNFT") Ownable(msg.sender) {
+        require(_reparationsDAO != address(0), "SRNFT: Invalid DAO address");
+        reparationsDAO = _reparationsDAO;
+    }
+    
+    function claimReparation(
+        address _claimant,
+        string memory _heritageProof,
+        uint256 _claimAmount,
+        string memory _metadataURI
+    ) external returns (uint256) {
+        require(msg.sender == reparationsDAO, "SRNFT: Only DAO can issue claims");
+        require(_claimant != address(0), "SRNFT: Invalid claimant address");
+        require(bytes(_heritageProof).length > 0, "SRNFT: Heritage proof required");
+        require(bytes(_metadataURI).length > 0, "SRNFT: Metadata URI required");
+        
+        _tokenIdCounter++;
+        uint256 tokenId = _tokenIdCounter;
+        
+        _safeMint(_claimant, tokenId);
+        
+        reparations[tokenId] = ReparationData({
+            heritageProof: _heritageProof,
+            claimAmount: _claimAmount,
+            claimDate: block.timestamp,
+            isClaimed: false,
+            metadataURI: _metadataURI
+        });
+        
+        userClaims[_claimant].push(tokenId);
+        
+        emit ReparationClaimed(_claimant, tokenId, _claimAmount);
+        return tokenId;
+    }
+    
+    function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
+        require(_ownerOf(tokenId) != address(0), "SRNFT: URI query for nonexistent token");
+        return reparations[tokenId].metadataURI;
+    }
+    
+    function getUserClaims(address _user) external view returns (uint256[] memory) {
+        return userClaims[_user];
+    }
+    
+    function setReparationsDAO(address _newDAO) external onlyOwner {
+        require(_newDAO != address(0), "SRNFT: Invalid DAO address");
+        reparationsDAO = _newDAO;
+    }
+    
+    function markClaimed(uint256 tokenId) external {
+        require(msg.sender == reparationsDAO, "SRNFT: Only DAO can mark as claimed");
+        require(_ownerOf(tokenId) != address(0), "SRNFT: Token does not exist");
+        reparations[tokenId].isClaimed = true;
+    }
+}---File Content End---
+

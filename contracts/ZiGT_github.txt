@@ -1,533 +1,5 @@
----Path and files name: ZiGT_github/ZiGOracleHub.sol
----Filename: ZiGOracleHub.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
-interface IChainlinkAggregator {
-    function latestAnswer() external view returns (int256);
-    function decimals() external view returns (uint8);
-}
-
-contract ZiGOracleHub is Ownable, ReentrancyGuard {
-    struct OracleConfig {
-        address source;        // Address of oracle (e.g., Chainlink aggregator)
-        uint8 decimals;        // Decimals of the price feed
-        bool isCustom;         // Is this a custom (non-Chainlink) feed?
-        bool isInverse;        // If true, return 1 / rate
-    }
-
-    // Symbol => Oracle Config
-    mapping(bytes32 => OracleConfig) public oracles;
-
-    event OracleSet(bytes32 indexed symbol, address source, uint8 decimals, bool isCustom, bool isInverse);
-    event OracleRemoved(bytes32 indexed symbol);
-
-    // --- Modifiers ---
-    modifier validSymbol(string memory symbol) {
-        require(bytes(symbol).length > 0, "Symbol required");
-        _;
-    }
-
-    // --- Constructor ---
-    constructor(address initialOwner) Ownable(initialOwner) {}
-
-    // --- Admin Functions ---
-    function setOracle(
-        string memory symbol,
-        address source,
-        uint8 decimals,
-        bool isCustom,
-        bool isInverse
-    ) external onlyOwner validSymbol(symbol) {
-        bytes32 key = keccak256(abi.encodePacked(symbol));
-        oracles[key] = OracleConfig(source, decimals, isCustom, isInverse);
-        emit OracleSet(key, source, decimals, isCustom, isInverse);
-    }
-
-    function removeOracle(string memory symbol) external onlyOwner validSymbol(symbol) {
-        bytes32 key = keccak256(abi.encodePacked(symbol));
-        delete oracles[key];
-        emit OracleRemoved(key);
-    }
-
-    // --- Public View Functions ---
-    function getRate(string memory symbol) public view validSymbol(symbol) returns (uint256 rate, uint8 decimals) {
-        bytes32 key = keccak256(abi.encodePacked(symbol));
-        OracleConfig memory config = oracles[key];
-        require(config.source != address(0), "Oracle not found");
-
-        if (config.isCustom) {
-            // Add support for your custom logic here
-            revert("Custom oracle logic not implemented");
-        } else {
-            int256 answer = IChainlinkAggregator(config.source).latestAnswer();
-            require(answer > 0, "Invalid rate");
-            rate = uint256(answer);
-
-            if (config.isInverse) {
-                rate = (10 ** (config.decimals * 2)) / rate; // e.g., 1 / rate
-            }
-
-            decimals = config.decimals;
-        }
-    }
-
-    /// Triangulates FX rate using: rate(A/B) = rate(A/USD) / rate(B/USD)
-    function getTriangulatedRate(
-        string memory baseSymbol,
-        string memory quoteSymbol
-    ) external view returns (uint256 rate, uint8 decimals) {
-        (uint256 baseRate, uint8 baseDecimals) = getRate(baseSymbol);
-        (uint256 quoteRate, uint8 quoteDecimals) = getRate(quoteSymbol);
-
-        require(quoteRate > 0, "Quote rate zero");
-        require(baseDecimals == quoteDecimals, "Mismatched decimals");
-
-        rate = (baseRate * (10 ** baseDecimals)) / quoteRate;
-        decimals = baseDecimals;
-    }
-}
----File Content End---
-
----Path and files name: ZiGT_github/ReparationsModel.sol
----Filename: ReparationsModel.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "./RedistributionVault.sol";
-import "./AccessVerifier.sol";
-import "./EthicalGuard.sol";
-import { IERC20 as wZiGT} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-interface IReparationsDAO {
-    function isAuthorized(address caller) external view returns (bool);
-}
-
-interface IOracleRouter {
-    function getPrice(string calldata symbol) external view returns (uint256 price, uint8 decimals);
-}
-
-contract ReparationsModel is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, EthicalGuard {
-    // Asset symbols
-    string public constant XAU = "XAU";
-    string public constant USD = "USD";
-    string public constant BTC = "BTC";
-    string public constant ETH = "ETH";
-    string public constant XOF = "XOF";
-    string public constant ZAR = "ZAR";
-
-    // Asset weights (basis points, 10000 = 100%)
-    uint256 public constant XAU_WEIGHT = 3600;
-    uint256 public constant USD_WEIGHT = 1800;
-    uint256 public constant BTC_WEIGHT = 1800;
-    uint256 public constant ETH_WEIGHT = 1200;
-    uint256 public constant XOF_WEIGHT = 800;
-    uint256 public constant ZAR_WEIGHT = 800;
-
-    uint256 public constant FEE_BPS = 200; // 2%
-    uint256 public constant REDUCED_FEE_BPS = 100; // 1%
-    uint256 public constant REBALANCE_INTERVAL = 90 days;
-
-    wZiGT public zigtToken;
-    AccessVerifier public accessVerifier;
-    IReparationsDAO public reparationsDAO;
-    IOracleRouter public oracleRouter;
-
-    uint256 public lastRebalance;
-
-    event Minted(address indexed user, uint256 amount, uint256 fee);
-    event Redeemed(address indexed user, uint256 amount, uint256 fee);
-    event Rebalanced(uint256 timestamp);
-    wZiGT public paymentToken;
-
-    constructor(address _paymentToken, address _zigtToken) {
-        paymentToken = wZiGT(_paymentToken);
-        zigtToken = wZiGT(_zigtToken);
-    }
-
-    modifier onlyDAOorTimelock() {
-        require(
-            msg.sender == address(reparationsDAO) || reparationsDAO.isAuthorized(msg.sender),
-            "Not authorized for rebalance"
-        );
-        _;
-    }
-
-    function initialize(
-        address _zigtToken,
-        address _vault,
-        address _verifier,
-        address _dao,
-        address _oracleRouter
-    ) public initializer {
-        __Ownable_init(msg.sender);
-        __ReentrancyGuard_init();
-        __EthicalGuard_init(_vault); // Initialize EthicalGuard
-        zigtToken = wZiGT(_zigtToken);
-        redistributionVault = IRedistributionVault(_vault); // Use interface type
-        accessVerifier = AccessVerifier(_verifier);
-        reparationsDAO = IReparationsDAO(_dao);
-        oracleRouter = IOracleRouter(_oracleRouter);
-        lastRebalance = block.timestamp;
-    }
-
-
-    function mint(uint256 amount) external nonReentrant {
-        require(amount > 0, "Zero amount");
-
-        uint256 fee = _getFee(msg.sender, amount);
-        uint256 net = amount - fee;
-
-        // Accept payment in ERC-20 token (e.g., USDC, DAI, etc.)
-        require(paymentToken.transferFrom(msg.sender, address(this), amount), "Payment failed");
-
-        // Route fee to vault
-        require(paymentToken.transfer(address(redistributionVault), fee), "Fee transfer failed");
-
-        // Mint ZiGT tokens to user
-        require(zigtToken.transfer(msg.sender, net), "ZiGT transfer failed");
-
-        emit Minted(msg.sender, net, fee);
-    }
-
-
-function redeem(uint256 amount) external nonReentrant reparationBeforeProfit {
-        require(zigtToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
-        require(amount > 0, "Zero amount");
-        require(zigtToken.balanceOf(msg.sender) >= amount, "Insufficient balance");
-        uint256 fee = _getFee(msg.sender, amount);
-        uint256 net = amount - fee;
-        // Burn tokens
-        zigtToken.transferFrom(msg.sender, address(this), amount);
-        // Route fee to vault
-        (bool sent, ) = payable(address(redistributionVault)).call{value: fee}("");
-        require(sent, "Fee transfer failed");
-        // Payout basket (mock: just send ETH, in real: send basket assets)
-        payable(msg.sender).transfer(net);
-        emit Redeemed(msg.sender, net, fee);
-    }
-
-    function _getFee(address user, uint256 amount) internal view returns (uint256) {
-        if (accessVerifier.eligibleForReducedFee(user)) {
-            return (amount * REDUCED_FEE_BPS) / 10000;
-        } else {
-            return (amount * FEE_BPS) / 10000;
-        }
-    }
-
-    // Calculate the basket value for a given amount of ZiGT
-    function getRedemptionValue(uint256 amount) public view returns (uint256) {
-        (uint256 value, ) = _basketValue(amount);
-        return value;
-    }
-
-    function _basketValue(uint256 amount) internal view returns (uint256 value, uint256[] memory assetValues) {
-        assetValues = new uint256[](6);
-        (uint256 xau, ) = oracleRouter.getPrice(XAU);
-        (uint256 usd, ) = oracleRouter.getPrice(USD);
-        (uint256 btc, ) = oracleRouter.getPrice(BTC);
-        (uint256 eth, ) = oracleRouter.getPrice(ETH);
-        (uint256 xof, ) = oracleRouter.getPrice(XOF);
-        (uint256 zar, ) = oracleRouter.getPrice(ZAR);
-        assetValues[0] = (amount * xau * XAU_WEIGHT) / 10000;
-        assetValues[1] = (amount * usd * USD_WEIGHT) / 10000;
-        assetValues[2] = (amount * btc * BTC_WEIGHT) / 10000;
-        assetValues[3] = (amount * eth * ETH_WEIGHT) / 10000;
-        assetValues[4] = (amount * xof * XOF_WEIGHT) / 10000;
-        assetValues[5] = (amount * zar * ZAR_WEIGHT) / 10000;
-        value = assetValues[0] + assetValues[1] + assetValues[2] + assetValues[3] + assetValues[4] + assetValues[5];
-    }
-
-    // Rebalance basket weights/prices (only DAO/timelock)
-    function rebalance() external onlyDAOorTimelock {
-        require(block.timestamp >= lastRebalance + REBALANCE_INTERVAL, "Rebalance interval");
-        // In a real implementation, update weights/prices from oracles and emit event
-        lastRebalance = block.timestamp;
-        emit Rebalanced(block.timestamp);
-    }
-
-    // Prevent direct USD redemption
-    function redeemForUSD(uint256) external pure {
-        revert("Direct USD redemption disabled");
-    }
-}
----File Content End---
-
----Path and files name: ZiGT_github/FeedRegistry.sol
----Filename: FeedRegistry.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-
-interface IChainlinkAggregator {
-    function latestAnswer() external view returns (int256);
-}
-
-contract FeedRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
-    mapping(bytes32 => address) public feeds;
-
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-    }
-
-    function initialize() public initializer {
-        __Ownable_init(msg.sender);
-        __UUPSUpgradeable_init();
-    }
-
-    // --- ADMIN: Set a feed ---
-    function setFeed(bytes32 symbol, address feedAddress) public onlyOwner {
-        require(feedAddress != address(0), "Invalid feed address");
-        feeds[symbol] = feedAddress;
-    }
-
-    function setFeedForString(string memory symbol, address feedAddress) external onlyOwner {
-        bytes32 key = keccak256(bytes(symbol));
-        feeds[key] = feedAddress;
-    }
-
-    // --- Get a feed address ---
-    function getFeed(bytes32 symbol) external view returns (address) {
-        return feeds[symbol];
-    }
-
-    // --- Get latest rate from feed ---
-    function getRate(bytes32 symbol) public view returns (uint256) {
-        address feed = feeds[symbol];
-        require(feed != address(0), "Feed not set");
-
-        int256 answer = IChainlinkAggregator(feed).latestAnswer();
-        require(answer > 0, "Invalid feed rate");
-        return uint256(answer);
-    }
-
-    function getRateForString(string memory symbol) external view returns (uint256) {
-        return getRate(keccak256(bytes(symbol)));
-    }
-
-    function _authorizeUpgrade(address) internal override onlyOwner {}
-}
----File Content End---
-
----Path and files name: ZiGT_github/AccessVerifier.sol
----Filename: AccessVerifier.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.22;
-
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-
-contract AccessVerifier is Initializable, UUPSUpgradeable, OwnableUpgradeable {
-    mapping(address => bool) public isAfrican;
-    mapping(address => bool) public isDiaspora;
-
-    event MarkedAfrican(address indexed user, bool status);
-    event MarkedDiaspora(address indexed user, bool status);
-
-    function initialize() public initializer {
-        __Ownable_init(msg.sender);
-        // No other initialization needed
-    }
-
-    function setAfrican(address user, bool status) external onlyOwner {
-        isAfrican[user] = status;
-        emit MarkedAfrican(user, status);
-    }
-
-    function setDiaspora(address user, bool status) external onlyOwner {
-        isDiaspora[user] = status;
-        emit MarkedDiaspora(user, status);
-    }
-
-    function eligibleForReducedFee(address user) external view returns (bool) {
-        return isAfrican[user] || isDiaspora[user];
-    }
-
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-}
----File Content End---
-
----Path and files name: ZiGT_github/RedistributionVault.sol
----Filename: RedistributionVault.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
-contract RedistributionVault is Initializable, OwnableUpgradeable, UUPSUpgradeable {
-    IERC20 public token; // Changed from paymentToken to token for consistency
-    address payable public panAfricanTreasury;
-    address payable public diasporaDevelopmentPool;
-    address payable public historicalRestitutionFund;
-
-    uint256 public totalReceived;
-    uint256 public minRedistributionShare; // e.g., 25% (2500 basis points)
-
-    event FundsReceived(address indexed from, uint256 amount);
-    event FundsDistributed(uint256 panAfrican, uint256 diaspora, uint256 restitution);
-    event TokensDeposited(address indexed from, uint256 amount);
-
-    function initialize(
-        address _tokenAddress,
-        address payable _panAfricanTreasury,
-        address payable _diasporaDevelopmentPool,
-        address payable _historicalRestitutionFund,
-        uint256 _minRedistributionShare
-    ) public initializer {
-        __Ownable_init(msg.sender);
-        token = IERC20(_tokenAddress);
-        panAfricanTreasury = _panAfricanTreasury;
-        diasporaDevelopmentPool = _diasporaDevelopmentPool;
-        historicalRestitutionFund = _historicalRestitutionFund;
-        minRedistributionShare = _minRedistributionShare;
-    }
-
-    function deposit(uint256 amount) external {
-        require(token.transferFrom(msg.sender, address(this), amount), "Token transfer failed");
-        totalReceived += amount;
-        emit TokensDeposited(msg.sender, amount);
-    }
-
-    function distribute() public onlyOwner {
-        uint256 balance = address(this).balance;
-        require(balance > 0, "No funds");
-        uint256 panAfrican = (balance * 40) / 100;
-        uint256 diaspora = (balance * 30) / 100;
-        uint256 restitution = balance - panAfrican - diaspora;
-        panAfricanTreasury.transfer(panAfrican);
-        diasporaDevelopmentPool.transfer(diaspora);
-        historicalRestitutionFund.transfer(restitution);
-        emit FundsDistributed(panAfrican, diaspora, restitution);
-    }
-
-    function setRecipients(
-        address payable _panAfricanTreasury,
-        address payable _diasporaDevelopmentPool,
-        address payable _historicalRestitutionFund
-    ) external onlyOwner {
-        panAfricanTreasury = _panAfricanTreasury;
-        diasporaDevelopmentPool = _diasporaDevelopmentPool;
-        historicalRestitutionFund = _historicalRestitutionFund;
-    }
-
-    function setMinRedistributionShare(uint256 _bps) external onlyOwner {
-        require(_bps <= 10000, "Too high");
-        minRedistributionShare = _bps;
-    }
-
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-}---File Content End---
-
----Path and files name: ZiGT_github/ZiGNFT.sol
----Filename: ZiGNFT.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-
-contract ZiGNFT is ERC721URIStorage, Ownable {
-    using EnumerableSet for EnumerableSet.UintSet;
-    uint256 public nextTokenId;
-    mapping(address => EnumerableSet.UintSet) private _ownedTokens;
-
-    // Lazy minting: admin sets up claimable NFTs
-    struct LazyMint {
-        string uri;
-        bool claimed;
-    }
-    mapping(uint256 => LazyMint) public lazyMints;
-    uint256 public nextLazyMintId;
-
-    constructor(address initialOwner) ERC721("ZiG NFT", "ZiGID-ART") Ownable(initialOwner) {}
-
-    // Standard mint (admin/council/DAO)
-    function mint(address to, string memory uri) external onlyOwner returns (uint256) {
-        uint256 tokenId = nextTokenId++;
-        _mint(to, tokenId);
-        _setTokenURI(tokenId, uri);
-        _ownedTokens[to].add(tokenId);
-        emit NFTMinted(to, tokenId, uri);
-        return tokenId;
-    }
-
-    // Mint diaspora/council badge
-    function mintBadge(address to, string memory badgeType, string memory uri) external onlyOwner returns (uint256) {
-        uint256 tokenId = nextTokenId++;
-        _mint(to, tokenId);
-        _setTokenURI(tokenId, uri);
-        _ownedTokens[to].add(tokenId);
-        emit BadgeMinted(to, tokenId, badgeType, uri);
-        return tokenId;
-    }
-
-    // Mint cultural artifact
-    function mintCultural(address to, string memory artifactType, string memory uri) external onlyOwner returns (uint256) {
-        uint256 tokenId = nextTokenId++;
-        _mint(to, tokenId);
-        _setTokenURI(tokenId, uri);
-        _ownedTokens[to].add(tokenId);
-        emit CulturalMinted(to, tokenId, artifactType, uri);
-        return tokenId;
-    }
-
-    // Lazy mint setup (admin)
-    function setupLazyMint(string memory uri) external onlyOwner returns (uint256) {
-        uint256 lazyId = nextLazyMintId++;
-        lazyMints[lazyId] = LazyMint({uri: uri, claimed: false});
-        emit LazyMintSetup(lazyId, uri);
-        return lazyId;
-    }
-
-    // Claim lazy minted NFT (user pays gas)
-    function claimLazyMint(uint256 lazyId) external returns (uint256) {
-        require(!lazyMints[lazyId].claimed, "Already claimed");
-        lazyMints[lazyId].claimed = true;
-        uint256 tokenId = nextTokenId++;
-        _mint(msg.sender, tokenId);
-        _setTokenURI(tokenId, lazyMints[lazyId].uri);
-        _ownedTokens[msg.sender].add(tokenId);
-        emit NFTClaimed(msg.sender, tokenId, lazyMints[lazyId].uri);
-        return tokenId;
-    }
-
-    // View owned tokens
-    function tokensOf(address owner) external view returns (uint256[] memory) {
-        return _ownedTokens[owner].values();
-    }
-
-    // Events
-    event NFTMinted(address indexed to, uint256 indexed tokenId, string uri);
-    event BadgeMinted(address indexed to, uint256 indexed tokenId, string badgeType, string uri);
-    event CulturalMinted(address indexed to, uint256 indexed tokenId, string artifactType, string uri);
-    event LazyMintSetup(uint256 indexed lazyId, string uri);
-    event NFTClaimed(address indexed to, uint256 indexed tokenId, string uri);
-}
----File Content End---
-
----Path and files name: ZiGT_github/ZiGT.sol
----Filename: ZiGT.sol
+---Path and files name: ZiGT_github/ZiGTLarge.sol
+---Filename: ZiGTLarge.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
@@ -541,7 +13,12 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+
+interface IOracle {
+    function latestAnswer() external view returns (int256);
+    function decimals() external view returns (uint8);
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80);
+}
 
 enum AssetType { METAL, CRYPTO, FIAT }
 enum StrategicDirection { Famous8PlusZAR, G20ReserveModel, PanAfroEurasianModel, ZiGMirrorModel, ReparationsModel }
@@ -572,7 +49,7 @@ interface IBandFeedRegistry {
     function getFeedAddress(string memory assetPair) external view returns (address);
 }
     
-contract ZiGT is 
+contract ZiGTLarge is 
     Initializable,
     ERC20Upgradeable,
     ReentrancyGuardUpgradeable,
@@ -609,6 +86,7 @@ contract ZiGT is
     event PriceCached(bytes32 indexed assetKey, uint256 price, uint256 timestamp);
     event PricesRetrieved(string[] symbols, uint256[] prices, uint256[] timestamps);
     event BandFeedRegistrySet(address indexed registry);
+    event PriceError(bytes32 indexed assetKey, string reason) ;
 
     modifier onlyGovernance() override {
         require(msg.sender == governance, "Unauthorized");
@@ -643,9 +121,38 @@ function initialize(
     feePercentage = 100;
     
     _setupOracles(direction);
+    _initializeBandFeeds();
     emit ConfigurationUpdated(direction, ratio);
     emit BandFeedRegistrySet(bandFeedRegistry_);
 }
+
+
+function _initializeBandFeeds() private {
+    bytes32[] memory assets = new bytes32[](6);
+    assets[0] = keccak256("XAUUSD");
+    assets[1] = keccak256("BTCUSD");
+    assets[2] = keccak256("ETHUSD");
+    assets[3] = keccak256("AUDUSD");
+    assets[4] = keccak256("USDZAR");
+    assets[5] = keccak256("EURUSD");
+    assets[6] = keccak256("GBPUSD");
+    assets[7] = keccak256("USDCHF");
+    assets[8] = keccak256("USDJPY");
+    assets[9] = keccak256("BNBUSD");    
+    assets[10] = keccak256("NGNUSD");
+    assets[11] = keccak256("EGPUSD");
+    assets[12] = keccak256("RUBUSD");
+    assets[13] = keccak256("TRYUSD");
+    assets[14] = keccak256("INRUSD");
+    
+    for(uint i = 0; i < assets.length; i++) {
+        OracleConfig storage config = assetOracles[assets[i]];
+        if(config.bandFeed != address(0)) {
+            updateCachedPrice(assets[i]);
+        }
+    }
+}
+
 
     function setOracle(bytes32 assetKey, OracleConfig memory config) external onlyGovernance {
         require(
@@ -804,19 +311,23 @@ function initialize(
         
         // Try Chainlink first
         if (config.chainlinkFeed != address(0)) {
-            try AggregatorV3Interface(config.chainlinkFeed).latestRoundData() returns (
+            try IOracle(config.chainlinkFeed).latestRoundData() returns (
                 uint80, int256 price, uint256, uint256 updatedAt, uint80
             ) {
                 require(price > 0, "Invalid Chainlink price");
                 require(block.timestamp - updatedAt <= config.maxPriceAge, "Stale Chainlink price");
                 return uint256(price) * (10 ** (18 - config.decimals));
-            } catch {
-                // Fall through to Band Protocol
-            }
+    } catch {
+        if (cachedPrice[assetKey] > 0) {
+            return cachedPrice[assetKey]; // Fallback to cached
+        }
+        revert("Price unavailable");
+    }
         }
         
         // Try Band Protocol
-        address bandFeed = IBandFeedRegistry(bandFeedRegistry).getFeedAddress(string(abi.encodePacked(assetKey)));
+        // address bandFeed = IBandFeedRegistry(bandFeedRegistry).getFeedAddress(string(abi.encodePacked(assetKey)));
+        address bandFeed = IBandFeedRegistry(bandFeedRegistry).getFeedAddress(_bytes32ToString(assetKey));
         if (bandFeed != address(0)) {
             (string memory base, string memory quote) = _getBandBaseQuote(assetKey);
             try IBandStdReference(bandFeed).getReferenceData(base, quote) returns (
@@ -835,13 +346,31 @@ function initialize(
         
         revert("No valid price feed available");
     }
-
-    function _getBandBaseQuote(bytes32 assetKey) internal pure returns (string memory base, string memory quote) {
-        bytes memory keyBytes = bytes(abi.encodePacked(assetKey));
-        require(keyBytes.length >= 6, "Invalid asset key");
-        base = string(abi.encodePacked(keyBytes[0], keyBytes[1], keyBytes[2]));
-        quote = string(abi.encodePacked(keyBytes[3], keyBytes[4], keyBytes[5]));
+    function _bytes32ToString(bytes32 _key) internal pure returns (string memory) {
+        bytes memory bytesArray = new bytes(32);
+        for (uint256 i; i < 32; i++) {
+            bytesArray[i] = _key[i];
+        }
+        return string(bytesArray);
     }
+    // function _getBandBaseQuote(bytes32 assetKey) internal pure returns (string memory base, string memory quote) {
+    //     bytes memory keyBytes = bytes(abi.encodePacked(assetKey));
+    //     require(keyBytes.length >= 6, "Invalid asset key");
+    //     base = string(abi.encodePacked(keyBytes[0], keyBytes[1], keyBytes[2]));
+    //     quote = string(abi.encodePacked(keyBytes[3], keyBytes[4], keyBytes[5]));
+    // }
+
+function _getBandBaseQuote(bytes32 assetKey) internal pure returns (string memory base, string memory quote) {
+    string memory pair = _bytes32ToString(assetKey);
+    bytes memory keyBytes = bytes(pair);
+    require(keyBytes.length >= 6, "Invalid asset key");
+    base = string(abi.encodePacked(keyBytes[0], keyBytes[1], keyBytes[2]));
+    quote = string(abi.encodePacked(keyBytes[3], keyBytes[4], keyBytes[5]));
+    if (bytes(base).length == 0 || bytes(quote).length == 0) {
+        base = pair; // Fallback to full pair for LiveBandFeed
+        quote = "";
+    }
+}    
 
     function _setupOracles(StrategicDirection _strategy) internal {
         // Common oracles for all strategies
@@ -1044,6 +573,1267 @@ function initialize(
     }
 }---File Content End---
 
+---Path and files name: ZiGT_github/ZiGOracleHub.sol
+---Filename: ZiGOracleHub.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+interface IOracle {
+    function latestAnswer() external view returns (int256);
+    function decimals() external view returns (uint8);
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80);
+}
+
+contract ZiGOracleHub is Ownable, ReentrancyGuard {
+    struct OracleConfig {
+        address source;        // Address of oracle (e.g., Chainlink aggregator)
+        uint8 decimals;        // Decimals of the price feed
+        bool isCustom;         // Is this a custom (non-Chainlink) feed?
+        bool isInverse;        // If true, return 1 / rate
+    }
+
+    // Symbol => Oracle Config
+    mapping(bytes32 => OracleConfig) public oracles;
+
+    event OracleSet(bytes32 indexed symbol, address source, uint8 decimals, bool isCustom, bool isInverse);
+    event OracleRemoved(bytes32 indexed symbol);
+
+    // --- Modifiers ---
+    modifier validSymbol(string memory symbol) {
+        require(bytes(symbol).length > 0, "Symbol required");
+        _;
+    }
+
+    // --- Constructor ---
+    constructor(address initialOwner) Ownable(initialOwner) {}
+
+    // --- Admin Functions ---
+    function setOracle(
+        string memory symbol,
+        address source,
+        uint8 decimals,
+        bool isCustom,
+        bool isInverse
+    ) external onlyOwner validSymbol(symbol) {
+        bytes32 key = keccak256(abi.encodePacked(symbol));
+        oracles[key] = OracleConfig(source, decimals, isCustom, isInverse);
+        emit OracleSet(key, source, decimals, isCustom, isInverse);
+    }
+
+    function removeOracle(string memory symbol) external onlyOwner validSymbol(symbol) {
+        bytes32 key = keccak256(abi.encodePacked(symbol));
+        delete oracles[key];
+        emit OracleRemoved(key);
+    }
+
+    // --- Public View Functions ---
+    function getRate(string memory symbol) public view validSymbol(symbol) returns (uint256 rate, uint8 decimals) {
+        bytes32 key = keccak256(abi.encodePacked(symbol));
+        OracleConfig memory config = oracles[key];
+        require(config.source != address(0), "Oracle not found");
+        
+
+        if (config.isCustom) {
+            // Add support for your custom logic here
+            revert("Custom oracle logic not implemented");
+        } else {
+            int256 answer = IOracle(config.source).latestAnswer();
+            require(answer > 0, "Invalid rate");
+            rate = uint256(answer);
+
+            if (config.isInverse) {
+                rate = (10 ** (config.decimals * 2)) / rate; // e.g., 1 / rate
+            }
+
+            decimals = config.decimals;
+        }
+    }
+
+
+
+    /// Triangulates FX rate using: rate(A/B) = rate(A/USD) / rate(B/USD)
+    function getTriangulatedRate(
+        string memory baseSymbol,
+        string memory quoteSymbol
+    ) external view returns (uint256 rate, uint8 decimals) {
+        (uint256 baseRate, uint8 baseDecimals) = getRate(baseSymbol);
+        (uint256 quoteRate, uint8 quoteDecimals) = getRate(quoteSymbol);
+
+        require(quoteRate > 0, "Quote rate zero");
+        require(baseRate > 0, "Base rate zero"); 
+
+        rate = (baseRate * (10 ** baseDecimals)) / quoteRate;
+        decimals = baseDecimals;
+    }
+
+    // ZiGOracleHub.sol
+function isOracleActive(string memory symbol) public view returns (bool) {
+    bytes32 key = keccak256(abi.encodePacked(symbol));
+    OracleConfig memory config = oracles[key];
+    if(config.source == address(0)) return false;
+    
+    try IOracle(config.source).latestRoundData() returns (uint80, int256, uint256 updatedAt, uint256, uint80) {
+        return block.timestamp - updatedAt < 24 hours;
+    } catch {
+        return false;
+    }
+}
+}
+---File Content End---
+
+---Path and files name: ZiGT_github/ReparationsModel.sol
+---Filename: ReparationsModel.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "./RedistributionVault.sol";
+import "./AccessVerifier.sol";
+import "./EthicalGuard.sol";
+import { IERC20 as wZiGT} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+interface IReparationsDAO {
+    function isAuthorized(address caller) external view returns (bool);
+}
+
+interface IOracleRouter {
+    function getPrice(string calldata symbol) external view returns (uint256 price, uint8 decimals);
+}
+
+contract ReparationsModel is 
+    Initializable,
+    UUPSUpgradeable,
+    ReentrancyGuardUpgradeable,
+    OwnableUpgradeable,
+    EthicalGuard
+{
+    // Asset symbols
+    string public constant XAU = "XAU";
+    string public constant USD = "USD";
+    string public constant BTC = "BTC";
+    string public constant ETH = "ETH";
+    string public constant XOF = "XOF";
+    string public constant ZAR = "ZAR";
+
+    // Asset weights (basis points, 10000 = 100%)
+    uint256 public constant XAU_WEIGHT = 3600;
+    uint256 public constant USD_WEIGHT = 1800;
+    uint256 public constant BTC_WEIGHT = 1800;
+    uint256 public constant ETH_WEIGHT = 1200;
+    uint256 public constant XOF_WEIGHT = 800;
+    uint256 public constant ZAR_WEIGHT = 800;
+
+    uint256 public constant FEE_BPS = 200; // 2%
+    uint256 public constant REDUCED_FEE_BPS = 100; // 1%
+    uint256 public constant REBALANCE_INTERVAL = 90 days;
+
+    wZiGT public zigtToken;
+    AccessVerifier public accessVerifier;
+    IReparationsDAO public reparationsDAO;
+    IOracleRouter public oracleRouter;
+
+    uint256 public lastRebalance;
+
+    event Minted(address indexed user, uint256 amount, uint256 fee);
+    event Redeemed(address indexed user, uint256 amount, uint256 fee);
+    event Rebalanced(uint256 timestamp);
+    wZiGT public paymentToken;
+
+    modifier onlyDAOorTimelock() {
+        require(
+            msg.sender == address(reparationsDAO) || reparationsDAO.isAuthorized(msg.sender),
+            "Not authorized for rebalance"
+        );
+        _;
+    }
+
+    function initialize(
+        address _paymentToken,
+        address _zigtToken,
+        address _vault,
+        address _verifier,
+        address _dao,
+        address _oracleRouter
+    ) public initializer {
+        __ReentrancyGuard_init();
+        // __Ownable_init(msg.sender);
+        __EthicalGuard_init(_vault);
+        
+        paymentToken = wZiGT(_paymentToken);
+        zigtToken = wZiGT(_zigtToken);
+        redistributionVault = IRedistributionVault(_vault);
+        accessVerifier = AccessVerifier(_verifier);
+        reparationsDAO = IReparationsDAO(_dao);
+        oracleRouter = IOracleRouter(_oracleRouter);
+        lastRebalance = block.timestamp;
+    }
+
+
+    // Required UUPS upgrade authorization
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    function mint(uint256 amount) external nonReentrant {
+        require(amount > 0, "Zero amount");
+
+        uint256 fee = _getFee(msg.sender, amount);
+        uint256 net = amount - fee;
+
+        // Accept payment in ERC-20 token (e.g., USDC, DAI, etc.)
+        require(paymentToken.transferFrom(msg.sender, address(this), amount), "Payment failed");
+
+        // Route fee to vault
+        require(paymentToken.transfer(address(redistributionVault), fee), "Fee transfer failed");
+
+        // Mint ZiGT tokens to user
+        require(zigtToken.transfer(msg.sender, net), "ZiGT transfer failed");
+
+        emit Minted(msg.sender, net, fee);
+    }
+
+
+// function redeem(uint256 amount) external nonReentrant reparationBeforeProfit {
+//         require(zigtToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+//         require(amount > 0, "Zero amount");
+//         require(zigtToken.balanceOf(msg.sender) >= amount, "Insufficient balance");
+//         uint256 fee = _getFee(msg.sender, amount);
+//         uint256 net = amount - fee;
+//         // Burn tokens
+//         zigtToken.transferFrom(msg.sender, address(this), amount);
+//         // Route fee to vault
+//         (bool sent, ) = payable(address(redistributionVault)).call{value: fee}("");
+//         require(sent, "Fee transfer failed");
+//         // Payout basket (mock: just send ETH, in real: send basket assets)
+//         payable(msg.sender).transfer(net);
+//         emit Redeemed(msg.sender, net, fee);
+//     }
+
+function redeem(uint256 amount) external nonReentrant reparationBeforeProfit {
+    require(zigtToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+    require(amount > 0, "Zero amount");
+    uint256 fee = _getFee(msg.sender, amount);
+    uint256 net = amount - fee;
+    require(paymentToken.transfer(address(redistributionVault), fee), "Fee transfer failed");
+    require(paymentToken.transfer(msg.sender, net), "Payout failed");
+    emit Redeemed(msg.sender, net, fee);
+}
+    function _getFee(address user, uint256 amount) internal view returns (uint256) {
+        if (accessVerifier.eligibleForReducedFee(user)) {
+            return (amount * REDUCED_FEE_BPS) / 10000;
+        } else {
+            return (amount * FEE_BPS) / 10000;
+        }
+    }
+
+    // Calculate the basket value for a given amount of ZiGT
+    function getRedemptionValue(uint256 amount) public view returns (uint256) {
+        (uint256 value, ) = _basketValue(amount);
+        return value;
+    }
+
+    function _basketValue(uint256 amount) internal view returns (uint256 value, uint256[] memory assetValues) {
+        assetValues = new uint256[](6);
+        (uint256 xau, ) = oracleRouter.getPrice(XAU);
+        (uint256 usd, ) = oracleRouter.getPrice(USD);
+        (uint256 btc, ) = oracleRouter.getPrice(BTC);
+        (uint256 eth, ) = oracleRouter.getPrice(ETH);
+        (uint256 xof, ) = oracleRouter.getPrice(XOF);
+        (uint256 zar, ) = oracleRouter.getPrice(ZAR);
+        assetValues[0] = (amount * xau * XAU_WEIGHT) / 10000;
+        assetValues[1] = (amount * usd * USD_WEIGHT) / 10000;
+        assetValues[2] = (amount * btc * BTC_WEIGHT) / 10000;
+        assetValues[3] = (amount * eth * ETH_WEIGHT) / 10000;
+        assetValues[4] = (amount * xof * XOF_WEIGHT) / 10000;
+        assetValues[5] = (amount * zar * ZAR_WEIGHT) / 10000;
+        value = assetValues[0] + assetValues[1] + assetValues[2] + assetValues[3] + assetValues[4] + assetValues[5];
+    }
+
+    // Rebalance basket weights/prices (only DAO/timelock)
+    function rebalance() external onlyDAOorTimelock {
+        require(block.timestamp >= lastRebalance + REBALANCE_INTERVAL, "Rebalance interval");
+        // In a real implementation, update weights/prices from oracles and emit event
+        lastRebalance = block.timestamp;
+        emit Rebalanced(block.timestamp);
+    }
+
+    // Prevent direct USD redemption
+    function redeemForUSD(uint256) external pure {
+        revert("Direct USD redemption disabled");
+    }
+}
+---File Content End---
+
+---Path and files name: ZiGT_github/FeedRegistry.sol
+---Filename: FeedRegistry.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+interface IChainlinkAggregator {
+    function latestAnswer() external view returns (int256);
+}
+
+contract FeedRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    mapping(bytes32 => address) public feeds;
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize() public initializer {
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
+    }
+
+    // --- ADMIN: Set a feed ---
+    function setFeed(bytes32 symbol, address feedAddress) public onlyOwner {
+        require(feedAddress != address(0), "Invalid feed address");
+        feeds[symbol] = feedAddress;
+    }
+
+    function setFeedForString(string memory symbol, address feedAddress) external onlyOwner {
+        bytes32 key = keccak256(bytes(symbol));
+        feeds[key] = feedAddress;
+    }
+
+    // --- Get a feed address ---
+    function getFeed(bytes32 symbol) external view returns (address) {
+        return feeds[symbol];
+    }
+
+    // --- Get latest rate from feed ---
+    function getRate(bytes32 symbol) public view returns (uint256) {
+        address feed = feeds[symbol];
+        require(feed != address(0), "Feed not set");
+
+        int256 answer = IChainlinkAggregator(feed).latestAnswer();
+        require(answer > 0, "Invalid feed rate");
+        return uint256(answer);
+    }
+
+    function getRateForString(string memory symbol) external view returns (uint256) {
+        return getRate(keccak256(bytes(symbol)));
+    }
+
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+}
+---File Content End---
+
+---Path and files name: ZiGT_github/AccessVerifier.sol
+---Filename: AccessVerifier.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+contract AccessVerifier is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+    mapping(address => bool) public isAfrican;
+    mapping(address => bool) public isDiaspora;
+
+    event MarkedAfrican(address indexed user, bool status);
+    event MarkedDiaspora(address indexed user, bool status);
+
+    function initialize() public initializer {
+        __Ownable_init(msg.sender);
+        // No other initialization needed
+    }
+
+    function setAfrican(address user, bool status) external onlyOwner {
+        isAfrican[user] = status;
+        emit MarkedAfrican(user, status);
+    }
+
+    function setDiaspora(address user, bool status) external onlyOwner {
+        isDiaspora[user] = status;
+        emit MarkedDiaspora(user, status);
+    }
+
+    function eligibleForReducedFee(address user) external view returns (bool) {
+        return isAfrican[user] || isDiaspora[user];
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+}
+---File Content End---
+
+---Path and files name: ZiGT_github/RedistributionVault.sol
+---Filename: RedistributionVault.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract RedistributionVault is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    IERC20 public token; // Changed from paymentToken to token for consistency
+    address payable public panAfricanTreasury;
+    address payable public diasporaDevelopmentPool;
+    address payable public historicalRestitutionFund;
+
+    uint256 public totalReceived;
+    uint256 public minRedistributionShare; // e.g., 25% (2500 basis points)
+
+    event FundsReceived(address indexed from, uint256 amount);
+    event FundsDistributed(uint256 panAfrican, uint256 diaspora, uint256 restitution);
+    event TokensDeposited(address indexed from, uint256 amount);
+
+    function initialize(
+        address _tokenAddress,
+        address payable _panAfricanTreasury,
+        address payable _diasporaDevelopmentPool,
+        address payable _historicalRestitutionFund,
+        uint256 _minRedistributionShare
+    ) public initializer {
+        __Ownable_init(msg.sender);
+        token = IERC20(_tokenAddress);
+        panAfricanTreasury = _panAfricanTreasury;
+        diasporaDevelopmentPool = _diasporaDevelopmentPool;
+        historicalRestitutionFund = _historicalRestitutionFund;
+        minRedistributionShare = _minRedistributionShare;
+    }
+
+    function deposit(uint256 amount) external {
+        require(token.transferFrom(msg.sender, address(this), amount), "Token transfer failed");
+        totalReceived += amount;
+        emit TokensDeposited(msg.sender, amount);
+    }
+
+    // function distribute() public onlyOwner {
+    //     uint256 balance = address(this).balance;
+    //     require(balance > 0, "No funds");
+    //     uint256 panAfrican = (balance * 40) / 100;
+    //     uint256 diaspora = (balance * 30) / 100;
+    //     uint256 restitution = balance - panAfrican - diaspora;
+    //     panAfricanTreasury.transfer(panAfrican);
+    //     diasporaDevelopmentPool.transfer(diaspora);
+    //     historicalRestitutionFund.transfer(restitution);
+    //     emit FundsDistributed(panAfrican, diaspora, restitution);
+    // }
+
+function distribute() public onlyOwner {
+    uint256 balance = token.balanceOf(address(this));
+    require(balance > 0, "No funds");
+    uint256 panAfrican = (balance * 40) / 100;
+    uint256 diaspora = (balance * 30) / 100;
+    uint256 restitution = balance - panAfrican - diaspora;
+    require(token.transfer(panAfricanTreasury, panAfrican), "Transfer failed");
+    require(token.transfer(diasporaDevelopmentPool, diaspora), "Transfer failed");
+    require(token.transfer(historicalRestitutionFund, restitution), "Transfer failed");
+    emit FundsDistributed(panAfrican, diaspora, restitution);
+}
+    function setRecipients(
+        address payable _panAfricanTreasury,
+        address payable _diasporaDevelopmentPool,
+        address payable _historicalRestitutionFund
+    ) external onlyOwner {
+        panAfricanTreasury = _panAfricanTreasury;
+        diasporaDevelopmentPool = _diasporaDevelopmentPool;
+        historicalRestitutionFund = _historicalRestitutionFund;
+    }
+
+    function setMinRedistributionShare(uint256 _bps) external onlyOwner {
+        require(_bps <= 10000, "Too high");
+        minRedistributionShare = _bps;
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+}---File Content End---
+
+---Path and files name: ZiGT_github/ZiGNFT.sol
+---Filename: ZiGNFT.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+
+contract ZiGNFT is ERC721URIStorage, Ownable {
+    using EnumerableSet for EnumerableSet.UintSet;
+    uint256 public nextTokenId;
+    mapping(address => EnumerableSet.UintSet) private _ownedTokens;
+
+    // Lazy minting: admin sets up claimable NFTs
+    struct LazyMint {
+        string uri;
+        bool claimed;
+    }
+    mapping(uint256 => LazyMint) public lazyMints;
+    uint256 public nextLazyMintId;
+
+    constructor(address initialOwner) ERC721("ZiG NFT", "ZiGID-ART") Ownable(initialOwner) {}
+
+    // Standard mint (admin/council/DAO)
+    function mint(address to, string memory uri) external onlyOwner returns (uint256) {
+        uint256 tokenId = nextTokenId++;
+        _mint(to, tokenId);
+        _setTokenURI(tokenId, uri);
+        _ownedTokens[to].add(tokenId);
+        emit NFTMinted(to, tokenId, uri);
+        return tokenId;
+    }
+
+    // Mint diaspora/council badge
+    function mintBadge(address to, string memory badgeType, string memory uri) external onlyOwner returns (uint256) {
+        uint256 tokenId = nextTokenId++;
+        _mint(to, tokenId);
+        _setTokenURI(tokenId, uri);
+        _ownedTokens[to].add(tokenId);
+        emit BadgeMinted(to, tokenId, badgeType, uri);
+        return tokenId;
+    }
+
+    // Mint cultural artifact
+    function mintCultural(address to, string memory artifactType, string memory uri) external onlyOwner returns (uint256) {
+        uint256 tokenId = nextTokenId++;
+        _mint(to, tokenId);
+        _setTokenURI(tokenId, uri);
+        _ownedTokens[to].add(tokenId);
+        emit CulturalMinted(to, tokenId, artifactType, uri);
+        return tokenId;
+    }
+
+    // Lazy mint setup (admin)
+    function setupLazyMint(string memory uri) external onlyOwner returns (uint256) {
+        uint256 lazyId = nextLazyMintId++;
+        lazyMints[lazyId] = LazyMint({uri: uri, claimed: false});
+        emit LazyMintSetup(lazyId, uri);
+        return lazyId;
+    }
+
+    // Claim lazy minted NFT (user pays gas)
+    function claimLazyMint(uint256 lazyId) external returns (uint256) {
+        require(!lazyMints[lazyId].claimed, "Already claimed");
+        lazyMints[lazyId].claimed = true;
+        uint256 tokenId = nextTokenId++;
+        _mint(msg.sender, tokenId);
+        _setTokenURI(tokenId, lazyMints[lazyId].uri);
+        _ownedTokens[msg.sender].add(tokenId);
+        emit NFTClaimed(msg.sender, tokenId, lazyMints[lazyId].uri);
+        return tokenId;
+    }
+
+    // View owned tokens
+    function tokensOf(address owner) external view returns (uint256[] memory) {
+        return _ownedTokens[owner].values();
+    }
+
+    // Events
+    event NFTMinted(address indexed to, uint256 indexed tokenId, string uri);
+    event BadgeMinted(address indexed to, uint256 indexed tokenId, string badgeType, string uri);
+    event CulturalMinted(address indexed to, uint256 indexed tokenId, string artifactType, string uri);
+    event LazyMintSetup(uint256 indexed lazyId, string uri);
+    event NFTClaimed(address indexed to, uint256 indexed tokenId, string uri);
+}
+---File Content End---
+
+---Path and files name: ZiGT_github/ZiGT.sol
+---Filename: ZiGT.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.6;
+
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "./Interfaces/IZiGGovernance.sol";
+import "./lib/PriceUtils.sol";
+
+contract ZiGT is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPSUpgradeable {
+    // Core protocol addresses
+    address public feeRouter;
+    address public bandFeedRegistry;
+    address public governance;
+    address public treasury;
+    address public liquidityPool;
+    address public stakingContract;
+    address public reserveManager;
+    
+    // Token configuration
+    uint8 public selectedDirection; // 0: Famous8PlusZAR, 1: ZiGMirrorModel
+    // bool private _notInitialized;
+    bool public immutableFee;
+    
+    // Custom token addresses for different assets
+    mapping(string => address) public assetTokens; // e.g., "GOLD" => token address
+    mapping(address => bool) public authorizedMinters;
+    mapping(address => bool) public authorizedBurners;
+
+    // Struct for reserve ratios (metal, fiat, crypto) scaled by 1e18
+    struct Ratio {
+        uint256 metal;
+        uint256 fiat;
+        uint256 crypto;
+    }
+
+    // Struct for oracle configuration
+    struct Oracle {
+        address oracle;
+        uint256 maxPriceAge;
+        uint8 decimals;
+        string name;
+        bool isTrusted;
+    }
+
+    // Reserve Models
+    mapping(string => Ratio) private reserveModels;
+    // Cached prices and timestamps
+    mapping(bytes32 => Oracle) public assetOracles;
+    mapping(bytes32 => uint256) private cachedPrice;
+    mapping(bytes32 => uint256) private cachedTimestamp;
+
+    // Events
+    event OracleUpdated(bytes32 indexed token, address indexed oracle);
+    event TokensMinted(address indexed to, uint256 amount);
+    event TokensBurned(address indexed from, uint256 amount);
+    event Rebalance();
+    event AssetTokenUpdated(string indexed asset, address indexed tokenAddress);
+    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
+    event LiquidityPoolUpdated(address indexed oldPool, address indexed newPool);
+    event AuthorizedMinterUpdated(address indexed minter, bool authorized);
+    event AuthorizedBurnerUpdated(address indexed burner, bool authorized);
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**
+     * @dev Initializes the contract with governance, oracle, and reserve model settings.
+     * @param _router Fee router address
+     * @param _bandFeedRegistry Band oracle feed registry address
+     * @param _governance Governance contract address
+     * @param _treasury Treasury contract address
+     * @param _direction Selected direction (0 or 1)
+     * @param _ratio Initial reserve ratio
+     */
+    function initialize(
+        address _router,
+        address _bandFeedRegistry,
+        address _governance,
+        address _treasury,
+        uint8 _direction,
+        Ratio memory _ratio
+    ) external initializer {
+        // require(!_notInitialized, "Contract already initialized");
+        require(_governance != address(0), "Invalid governance address");
+        require(_bandFeedRegistry != address(0), "Invalid feed registry");
+        require(_treasury != address(0), "Invalid treasury address");
+        
+        __ERC20_init("Mansa's Mbizo Yzuri Refu Tano", unicode"₥MYRT");
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
+
+        // Set core addresses
+        feeRouter = _router;
+        bandFeedRegistry = _bandFeedRegistry;
+        governance = _governance;
+        treasury = _treasury;
+        selectedDirection = _direction;
+        immutableFee = _router != address(0);
+        // _notInitialized = true;
+
+        // Initialize reserve models
+        initializeReserveModels();
+        
+        // Set default authorized addresses
+        authorizedMinters[msg.sender] = true;
+        authorizedBurners[msg.sender] = true;
+    }
+
+    /**
+     * @dev Initializes hardcoded reserve models.
+     */
+    function initializeReserveModels() internal {
+        reserveModels["Stability-Oriented"] = Ratio(0.6e18, 0.3e18, 0.1e18);
+        reserveModels["Digital Forward"] = Ratio(0.4e18, 0.3e18, 0.3e18);
+        reserveModels["Geopolitical Hedge"] = Ratio(0.5e18, 0.2e18, 0.3e18);
+        reserveModels["Afro-centric Trust"] = Ratio(0.55e18, 0.25e18, 0.2e18);
+    }
+
+    /**
+     * @dev Mints tokens to a specified address. Restricted to authorized minters.
+     * @param to Recipient address
+     * @param amount Amount to mint
+     */
+    function mint(address to, uint256 amount) external {
+        require(authorizedMinters[msg.sender] || 
+                IZiGGovernance(governance).hasRole(msg.sender, governanceRole()), 
+                "Not authorized to mint");
+        _mint(to, amount);
+        emit TokensMinted(to, amount);
+    }
+
+    /**
+     * @dev Burns tokens from a specified address. Restricted to authorized burners.
+     * @param from Source address
+     * @param amount Amount to burn
+     */
+    function burn(address from, uint256 amount) external {
+        require(authorizedBurners[msg.sender] || 
+                IZiGGovernance(governance).hasRole(msg.sender, governanceRole()), 
+                "Not authorized to burn");
+        _burn(from, amount);
+        emit TokensBurned(from, amount);
+    }
+
+    // ============ ADDRESS MANAGEMENT FUNCTIONS ============
+
+    /**
+     * @dev Sets the treasury contract address. Restricted to owner.
+     * @param _treasury New treasury address
+     */
+    function setTreasury(address _treasury) external onlyOwner {
+        require(_treasury != address(0), "Invalid treasury address");
+        address oldTreasury = treasury;
+        treasury = _treasury;
+        emit TreasuryUpdated(oldTreasury, _treasury);
+    }
+
+    /**
+     * @dev Sets the liquidity pool address. Restricted to owner.
+     * @param _pool New liquidity pool address
+     */
+    function setLiquidityPool(address _pool) external onlyOwner {
+        require(_pool != address(0), "Invalid pool address");
+        address oldPool = liquidityPool;
+        liquidityPool = _pool;
+        emit LiquidityPoolUpdated(oldPool, _pool);
+    }
+
+    /**
+     * @dev Sets the staking contract address. Restricted to owner.
+     * @param _staking New staking contract address
+     */
+    function setStakingContract(address _staking) external onlyOwner {
+        require(_staking != address(0), "Invalid staking address");
+        stakingContract = _staking;
+    }
+
+    /**
+     * @dev Sets the reserve manager address. Restricted to owner.
+     * @param _reserveManager New reserve manager address
+     */
+    function setReserveManager(address _reserveManager) external onlyOwner {
+        require(_reserveManager != address(0), "Invalid reserve manager address");
+        reserveManager = _reserveManager;
+    }
+
+    /**
+     * @dev Sets a custom token address for an asset. Restricted to owner.
+     * @param asset Asset name (e.g., "GOLD", "USD", "BTC")
+     * @param tokenAddress Token contract address for the asset
+     */
+    function setAssetToken(string memory asset, address tokenAddress) external onlyOwner {
+        require(tokenAddress != address(0), "Invalid token address");
+        require(bytes(asset).length > 0, "Invalid asset name");
+        assetTokens[asset] = tokenAddress;
+        emit AssetTokenUpdated(asset, tokenAddress);
+    }
+
+    /**
+     * @dev Authorizes or revokes minting permissions. Restricted to owner.
+     * @param minter Address to authorize/revoke
+     * @param authorized True to authorize, false to revoke
+     */
+    function setAuthorizedMinter(address minter, bool authorized) external onlyOwner {
+        require(minter != address(0), "Invalid minter address");
+        authorizedMinters[minter] = authorized;
+        emit AuthorizedMinterUpdated(minter, authorized);
+    }
+
+    /**
+     * @dev Authorizes or revokes burning permissions. Restricted to owner.
+     * @param burner Address to authorize/revoke
+     * @param authorized True to authorize, false to revoke
+     */
+    function setAuthorizedBurner(address burner, bool authorized) external onlyOwner {
+        require(burner != address(0), "Invalid burner address");
+        authorizedBurners[burner] = authorized;
+        emit AuthorizedBurnerUpdated(burner, authorized);
+    }
+
+    /**
+     * @dev Batch set multiple asset tokens. Restricted to owner.
+     * @param assets Array of asset names
+     * @param tokenAddresses Array of corresponding token addresses
+     */
+    function batchSetAssetTokens(
+        string[] memory assets, 
+        address[] memory tokenAddresses
+    ) external onlyOwner {
+        require(assets.length == tokenAddresses.length, "Arrays length mismatch");
+        
+        for (uint256 i = 0; i < assets.length; i++) {
+            require(tokenAddresses[i] != address(0), "Invalid token address");
+            require(bytes(assets[i]).length > 0, "Invalid asset name");
+            assetTokens[assets[i]] = tokenAddresses[i];
+            emit AssetTokenUpdated(assets[i], tokenAddresses[i]);
+        }
+    }
+
+    // ============ VIEW FUNCTIONS ============
+
+    /**
+     * @dev Gets the token address for a specific asset.
+     * @param asset Asset name
+     * @return Token contract address
+     */
+    function getAssetToken(string memory asset) external view returns (address) {
+        return assetTokens[asset];
+    }
+
+    /**
+     * @dev Checks if an address is authorized to mint.
+     * @param minter Address to check
+     * @return True if authorized
+     */
+    function isAuthorizedMinter(address minter) external view returns (bool) {
+        return authorizedMinters[minter];
+    }
+
+    /**
+     * @dev Checks if an address is authorized to burn.
+     * @param burner Address to check
+     * @return True if authorized
+     */
+    function isAuthorizedBurner(address burner) external view returns (bool) {
+        return authorizedBurners[burner];
+    }
+
+    /**
+     * @dev Rebalances the stablecoin based on a reserve model. Restricted to governance or owner.
+     * @param reserveModel Name of the reserve model
+     */
+    function rebalance(string memory reserveModel) external onlyRoleOrOwner(governanceRole()) {
+        Ratio memory ratio = reserveModels[reserveModel];
+        require(ratio.metal + ratio.fiat + ratio.crypto == 1e18, "Invalid reserve model");
+        // Simplified rebalance logic; extend as needed
+        emit Rebalance();
+    }
+
+    /**
+     * @dev Sets an oracle for a specific asset. Restricted to owner.
+     * @param key Asset key (keccak256 hash)
+     * @param _oracle Oracle configuration
+     */
+    function setOracle(bytes32 key, Oracle memory _oracle) external onlyOwner {
+        require(_oracle.oracle != address(0), "Invalid oracle address");
+        assetOracles[key] = _oracle;
+        emit OracleUpdated(key, _oracle.oracle);
+    }
+
+
+function updateCachedPrices(bytes32[] memory keys) external onlyRoleOrOwner(governanceRole()) {
+    for (uint256 i = 0; i < keys.length; i++) {
+        (uint256 price, uint8 decimals) = getPrice(keys[i]);
+        require(price > 0, "Invalid price");
+        cachedPrice[keys[i]] = price;
+        cachedTimestamp[keys[i]] = block.timestamp;
+    }
+}
+
+function getPrice(bytes32 key) public view returns (uint256 price, uint8 decimals) {
+    Oracle memory oracle = assetOracles[key];
+    require(oracle.isTrusted, "Oracle not trusted");
+    
+    // Directly call _fetchPrice instead of using try/catch with this.
+    (price, decimals) = _fetchPrice(oracle);
+    
+    require(price > 0, "Invalid price from oracle");
+    return (price, decimals);
+}
+
+function _fetchPrice(Oracle memory oracle) internal view returns (uint256 price, uint8 decimals) {
+    // Get price from Band Protocol feed
+    (string memory base, string memory quote) = _splitSymbol(oracle.name);
+    (uint256 rate,,) = IBandStdReference(oracle.oracle).getReferenceData(base, quote);
+    
+    // Normalize to 18 decimals
+    uint256 normalizedPrice = rate * (10 ** (18 - oracle.decimals));
+    return (normalizedPrice, 18);
+}
+
+function _splitSymbol(string memory symbol) internal pure returns (string memory base, string memory quote) {
+    bytes memory symbolBytes = bytes(symbol);
+    require(symbolBytes.length == 6, "Invalid symbol length");
+    
+    bytes memory baseBytes = new bytes(3);
+    bytes memory quoteBytes = new bytes(3);
+    
+    for (uint i = 0; i < 3; i++) {
+        baseBytes[i] = symbolBytes[i];
+        quoteBytes[i] = symbolBytes[i+3];
+    }
+    
+    return (string(baseBytes), string(quoteBytes));
+}
+    /**
+     * @dev Calculates the value of an amount in USD based on a reserve model.
+     * @param amount Amount of tokens
+     * @param reserveModel Name of the reserve model
+     * @return Value in USD
+     */
+    function getValueInUSD(uint256 amount, string memory reserveModel) public view returns (uint256) {
+        Ratio memory ratio = reserveModels[reserveModel];
+        require(ratio.metal + ratio.fiat + ratio.crypto == 1e18, "Invalid reserve model");
+
+        // Simplified value calculation; assumes cached prices are sufficient
+        uint256 totalValue = 0;
+        bytes32 key = keccak256(abi.encodePacked("XAUUSD")); // Example: Gold price as base
+        if (assetOracles[key].isTrusted) {
+            (uint256 price, uint8 decimals) = getPrice(key);
+            totalValue = PriceUtils.calculateValue(amount, price, decimals);
+        }
+        return totalValue;
+    }
+
+    /**
+     * @dev Retrieves the reserve model details.
+     * @param name Reserve model name
+     * @return Ratio struct of the reserve model
+     */
+    function getReserveModel(string memory name) external view returns (Ratio memory) {
+        return reserveModels[name];
+    }
+
+    /**
+     * @dev Gets the governance role from the governance contract.
+     * @return Governance role identifier
+     */
+    function governanceRole() public view returns (bytes32) {
+        return IZiGGovernance(governance).governanceRole();
+    }
+
+    /**
+     * @dev Modifier to restrict access to a specific governance role.
+     * @param role Role to check
+     */
+    modifier onlyRole(bytes32 role) {
+        require(IZiGGovernance(governance).hasRole(msg.sender, role), "Unauthorized");
+        _;
+    }
+
+    /**
+     * @dev Modifier to restrict access to a governance role or the owner.
+     * @param role Role to check
+     */
+    modifier onlyRoleOrOwner(bytes32 role) {
+        require(
+            IZiGGovernance(governance).hasRole(msg.sender, role) || owner() == msg.sender,
+            "Unauthorized"
+        );
+        _;
+    }
+
+    /**
+     * @dev Authorizes contract upgrades. Restricted to owner.
+     * @param newImplementation New contract implementation address
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+}---File Content End---
+
+---Path and files name: ZiGT_github/CustomChainlinkOracle.sol
+---Filename: CustomChainlinkOracle.sol
+---File Content Start---
+// contracts/CustomChainlinkOracle.sol
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface IChainlinkAggregator {
+  function latestAnswer() external view returns (int256);
+  function decimals() external view returns (uint8);
+}
+
+contract CustomChainlinkOracle is IChainlinkAggregator {
+  int256 private price;
+  uint8 public decimals;
+  address public owner;
+
+  constructor(uint8 _decimals) {
+    decimals = _decimals;
+    owner = msg.sender;
+  }
+
+  function setPrice(int256 _price) external {
+    require(msg.sender == owner, "Not owner");
+    price = _price;
+  }
+
+  function latestAnswer() external view override returns (int256) {
+    return price;
+  }
+}---File Content End---
+
+---Path and files name: ZiGT_github/ZiGT_SuperGodmode.sol
+---Filename: ZiGT_SuperGodmode.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
+interface IRedistributionVault {
+    function depositFromMint(address token, uint256 amount) external;
+    function withdrawToUser(address token, address user, uint256 amount) external;
+}
+
+interface IOracle {
+    function latestAnswer() external view returns (int256);
+    function decimals() external view returns (uint8);
+}
+
+interface IBandStdReference {
+    function getReferenceData(string memory base, string memory quote) external view returns (
+        uint256 rate,
+        uint256 lastUpdatedBase,
+        uint256 lastUpdatedQuote
+    );
+}
+
+/// @title ZiGT_SuperGodmode - Ultimate stablecoin with godlike control, dual oracles, and dynamic rebalancing
+contract ZiGT_SuperGodmode is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
+    address public paymentToken;
+    address public vault;
+    uint256 public rebalanceCooldown;
+    uint256 public lastRebalance;
+    uint256 public feePercentage; // In basis points (100 = 1%)
+
+    struct Asset {
+        string pair; // e.g., "XAUUSD"
+        address chainlinkFeed; // Chainlink oracle
+        address bandFeed; // Band Protocol feed
+        int256 weight; // Signed weight for pricing
+        uint8 decimals; // Oracle decimals
+        uint256 maxPriceAge; // Max age for price validity
+        uint256 cachedPrice; // Cached price
+        uint256 cachedTimestamp; // Cache timestamp
+    }
+
+    string[] public backingAssets;
+    mapping(string => Asset) public assets;
+    mapping(address => bool) public emergencyAdmins;
+
+    event Minted(address indexed user, uint256 amount, uint256 cost);
+    event Burned(address indexed user, uint256 amount, uint256 redeemed);
+    event Rebalanced(string[] assets, int256[] newWeights);
+    event FeeCharged(address indexed user, uint256 amount);
+    event PriceCached(string indexed pair, uint256 price, uint256 timestamp);
+    event EmergencyStop(address admin, bool stopped);
+    event WeightUpdated(string indexed pair, int256 newWeight);
+
+    bool public emergencyStop;
+
+    modifier onlyEmergencyAdmin() {
+        require(emergencyAdmins[msg.sender] || msg.sender == owner(), "Not emergency admin");
+        _;
+    }
+
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address _paymentToken,
+        address _vault,
+        string[] calldata _pairs,
+        address[] calldata _chainlinkFeeds,
+        address[] calldata _bandFeeds,
+        int256[] calldata _weights,
+        uint8[] calldata _decimals,
+        uint256[] calldata _maxPriceAges
+    ) external initializer {
+        require(_pairs.length == _weights.length && _pairs.length == _chainlinkFeeds.length, "Mismatch");
+        require(_pairs.length == _bandFeeds.length && _pairs.length == _decimals.length, "Mismatch");
+        require(_pairs.length == _maxPriceAges.length, "Mismatch");
+
+        __ERC20_init("ZiGT Super Godmode Coin", "ZiGT-SG");
+        __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+
+        paymentToken = _paymentToken;
+        vault = _vault;
+        rebalanceCooldown = 7 days;
+        feePercentage = 100; // 1% default fee
+
+        for (uint256 i = 0; i < _pairs.length; i++) {
+            backingAssets.push(_pairs[i]);
+            assets[_pairs[i]] = Asset({
+                pair: _pairs[i],
+                chainlinkFeed: _chainlinkFeeds[i],
+                bandFeed: _bandFeeds[i],
+                weight: _weights[i],
+                decimals: _decimals[i],
+                maxPriceAge: _maxPriceAges[i],
+                cachedPrice: 0,
+                cachedTimestamp: 0
+            });
+            updateCachedPrice(_pairs[i]);
+        }
+    }
+
+    function getPrice(string memory pair) public view returns (uint256) {
+        Asset memory asset = assets[pair];
+        require(asset.chainlinkFeed != address(0) || asset.bandFeed != address(0), "No oracle set");
+
+        if (asset.cachedTimestamp != 0 && block.timestamp - asset.cachedTimestamp <= asset.maxPriceAge) {
+            return asset.cachedPrice;
+        }
+
+        return _fetchFreshPrice(pair);
+    }
+
+    function _fetchFreshPrice(string memory pair) internal view returns (uint256) {
+        Asset memory asset = assets[pair];
+
+        // Try Chainlink
+        if (asset.chainlinkFeed != address(0)) {
+            try IOracle(asset.chainlinkFeed).latestAnswer() returns (int256 price) {
+                if (price > 0) {
+                    return uint256(price) * (10 ** (18 - asset.decimals));
+                }
+            } catch {}
+        }
+
+        // Try Band Protocol
+        if (asset.bandFeed != address(0)) {
+            (string memory base, string memory quote) = _splitPair(pair);
+            try IBandStdReference(asset.bandFeed).getReferenceData(base, quote) returns (
+                uint256 rate,
+                uint256 lastUpdatedBase,
+                uint256 lastUpdatedQuote
+            ) {
+                if (rate > 0 && block.timestamp - lastUpdatedBase <= asset.maxPriceAge && block.timestamp - lastUpdatedQuote <= asset.maxPriceAge) {
+                    return rate * (10 ** (18 - asset.decimals));
+                }
+            } catch {}
+        }
+
+        revert("No valid price feed");
+    }
+
+    function updateCachedPrice(string memory pair) public {
+        uint256 price = _fetchFreshPrice(pair);
+        assets[pair].cachedPrice = price;
+        assets[pair].cachedTimestamp = block.timestamp;
+        emit PriceCached(pair, price, block.timestamp);
+    }
+
+    function getZiGTPrice() public view returns (uint256) {
+        int256 total = 0;
+        for (uint256 i = 0; i < backingAssets.length; i++) {
+            string memory pair = backingAssets[i];
+            uint256 price = getPrice(pair);
+            total += int256(price) * assets[pair].weight;
+        }
+        require(total > 0, "Invalid price model");
+        return uint256(total) / 1e18; // Normalize to 18 decimals
+    }
+
+    function mint(uint256 amount) external nonReentrant {
+        require(!emergencyStop, "Emergency stop active");
+        uint256 price = getZiGTPrice();
+        uint256 cost = price * amount / 1e18;
+        uint256 fee = (cost * feePercentage) / 10000;
+        uint256 totalCost = cost + fee;
+
+        IERC20(paymentToken).transferFrom(msg.sender, address(this), totalCost);
+        IERC20(paymentToken).approve(vault, cost);
+        IRedistributionVault(vault).depositFromMint(paymentToken, cost);
+
+        _mint(msg.sender, amount);
+        if (fee > 0) {
+            emit FeeCharged(msg.sender, fee);
+        }
+        emit Minted(msg.sender, amount, totalCost);
+    }
+
+    function burn(uint256 amount) external nonReentrant {
+        require(!emergencyStop, "Emergency stop active");
+        uint256 price = getZiGTPrice();
+        uint256 payout = price * amount / 1e18;
+        uint256 fee = (payout * feePercentage) / 10000;
+        uint256 netPayout = payout - fee;
+
+        _burn(msg.sender, amount);
+        IRedistributionVault(vault).withdrawToUser(paymentToken, msg.sender, netPayout);
+        if (fee > 0) {
+            emit FeeCharged(msg.sender, fee);
+        }
+        emit Burned(msg.sender, amount, netPayout);
+    }
+
+    function rebalance(int256[] calldata newWeights) external onlyOwner {
+        require(block.timestamp > lastRebalance + rebalanceCooldown, "Cooldown active");
+        require(newWeights.length == backingAssets.length, "Mismatch");
+
+        int256 totalWeight = 0;
+        for (uint256 i = 0; i < newWeights.length; i++) {
+            assets[backingAssets[i]].weight = newWeights[i];
+            totalWeight += newWeights[i];
+            emit WeightUpdated(backingAssets[i], newWeights[i]);
+        }
+        require(totalWeight > 0, "Invalid weights");
+
+        lastRebalance = block.timestamp;
+        emit Rebalanced(backingAssets, newWeights);
+    }
+
+    function setEmergencyAdmin(address admin, bool status) external onlyOwner {
+        emergencyAdmins[admin] = status;
+    }
+
+    function toggleEmergencyStop(bool stop) external onlyEmergencyAdmin {
+        emergencyStop = stop;
+        emit EmergencyStop(msg.sender, stop);
+    }
+
+    function setFeePercentage(uint256 newFee) external onlyOwner {
+        require(newFee <= 500, "Fee too high"); // Max 5%
+        feePercentage = newFee;
+    }
+
+    function _splitPair(string memory pair) internal pure returns (string memory base, string memory quote) {
+        bytes memory pairBytes = bytes(pair);
+        require(pairBytes.length >= 6, "Invalid pair");
+        bytes memory baseBytes = new bytes(3);
+        bytes memory quoteBytes = new bytes(3);
+        for (uint256 i = 0; i < 3; i++) {
+            baseBytes[i] = pairBytes[i];
+            quoteBytes[i] = pairBytes[i + 3];
+        }
+        base = string(baseBytes);
+        quote = string(quoteBytes);
+    }
+
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+}---File Content End---
+
 ---Path and files name: ZiGT_github/ZiGSoulboundToken.sol
 ---Filename: ZiGSoulboundToken.sol
 ---File Content Start---
@@ -1091,14 +1881,80 @@ contract ZiGSoulboundToken is ERC721, Ownable {
 }
 ---File Content End---
 
+---Path and files name: ZiGT_github/LiveBandFeed.sol
+---Filename: LiveBandFeed.sol
+---File Content Start---
+// LiveBandFeed.sol
+// (No import "hardhat/console.sol"; or console.log lines here)
+
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "./Interfaces/IBandStdReference.sol";
+
+contract LiveBandFeed is IBandStdReference {
+    address public owner;
+    mapping(string => uint256) public prices;
+    mapping(string => uint256) public lastUpdated;
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    function setPrice(string memory pair, uint256 price) external onlyOwner {
+        prices[pair] = price;
+        lastUpdated[pair] = block.timestamp;
+    }
+
+    function getReferenceData(string memory base, string memory quote) external view returns (
+        uint256 rate,
+        uint256 lastUpdatedBase,
+        uint256 lastUpdatedQuote
+    ) {
+        string memory pair = string(abi.encodePacked(base, quote));
+
+        rate = prices[pair];
+        // Change the require to an if-revert with a specific message
+        if (rate == 0) { 
+            revert(string(abi.encodePacked("LiveBandFeed: Price is zero for pair: ", pair))); 
+        }
+
+        uint256 lastUpdate = lastUpdated[pair];
+        // Change the require to an if-revert with a specific message
+        if (lastUpdate == 0) { 
+            revert(string(abi.encodePacked("LiveBandFeed: Timestamp is zero for pair: ", pair)));
+        }
+
+        return (rate, lastUpdate, lastUpdate);
+    }
+
+    function setHighPrecisionPrice(string memory pair, uint256 price, uint8 decimals) external onlyOwner {
+        // Normalize to 18 decimals internally for downstream compatibility
+        require(decimals <= 30, "Too many decimals");
+        if (decimals > 18) {
+            uint256 factor = 10 ** (decimals - 18);
+            prices[pair] = price / factor;
+        } else {
+            uint256 factor = 10 ** (18 - decimals);
+            prices[pair] = price * factor;
+        }
+        lastUpdated[pair] = block.timestamp;
+    }
+}---File Content End---
+
 ---Path and files name: ZiGT_github/ZiGCrossChain.sol
 ---Filename: ZiGCrossChain.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-import "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
-import "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IRouterClient.sol";
+import "@chainlink/contracts-ccip/contracts/applications/CCIPReceiver.sol";
+import "@chainlink/contracts-ccip/contracts/interfaces/IRouterClient.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -1174,6 +2030,43 @@ abstract contract ZiGCrossChain is Initializable, OwnableUpgradeable {
         require(success, "Cross-chain call failed");
 
         emit MessageReceived(message.messageId);
+    }
+}---File Content End---
+
+---Path and files name: ZiGT_github/MultiOracle.sol
+---Filename: MultiOracle.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+contract MultiOracle {
+    mapping(bytes32 => uint256) public prices;
+    mapping(bytes32 => uint8) public decimals;
+    address public owner;
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    function setPrice(
+        string memory pair, 
+        uint256 price,
+        uint8 _decimals
+    ) external {
+        require(msg.sender == owner, "Not owner");
+        bytes32 key = keccak256(bytes(pair));
+        prices[key] = price;
+        decimals[key] = _decimals;
+    }
+
+    function latestAnswer(string memory pair) external view returns (int256) {
+        bytes32 key = keccak256(bytes(pair));
+        return int256(prices[key]);
+    }
+
+    function getDecimals(string memory pair) external view returns (uint8) {
+        bytes32 key = keccak256(bytes(pair));
+        return decimals[key];
     }
 }---File Content End---
 
@@ -1283,6 +2176,119 @@ contract ZiGGovernanceToken is Initializable, ERC20Upgradeable, ERC20PermitUpgra
     }
 }
 ---File Content End---
+
+---Path and files name: ZiGT_github/StdReferenceProxy.sol
+---Filename: StdReferenceProxy.sol
+---File Content Start---
+// contracts/StdReferenceProxy.sol
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface IBandStdReference {
+  function getReferenceData(string memory base, string memory quote)
+    external view returns (uint256 rate, uint256 lastUpdatedBase, uint256 lastUpdatedQuote);
+}
+
+contract StdReferenceProxy {
+  IBandStdReference public bandOracle;
+
+  constructor(address _bandOracle) {
+    bandOracle = IBandStdReference(_bandOracle);
+  }
+
+  function getPrice(string memory base, string memory quote) external view returns (uint256) {
+    (uint256 rate,,) = bandOracle.getReferenceData(base, quote);
+    return rate;
+  }
+}---File Content End---
+
+---Path and files name: ZiGT_github/RedistributionVaultV2.sol
+---Filename: RedistributionVaultV2.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+
+/// @title RedistributionVaultV2 - Manages ERC-20 deposits and yield forwarding for ZiG Ecosystem
+contract RedistributionVaultV2 is Ownable {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
+    struct Pool {
+        address token;
+        uint256 totalDeposited;
+        uint256 totalYield;
+    }
+
+    mapping(address => Pool) public pools;
+    EnumerableSet.AddressSet private poolTokens;
+    address public yieldStrategy;
+    address public authorizedMinter;
+
+    event Deposited(address indexed user, address indexed token, uint256 amount);
+    event Withdrawn(address indexed user, address indexed token, uint256 amount);
+    event YieldClaimed(address indexed token, uint256 yield);
+    event StrategyUpdated(address newStrategy);
+
+    modifier onlyAuthorizedMinter() {
+        require(msg.sender == authorizedMinter, "Not authorized minter");
+        _;
+    }
+
+    constructor(address _authorizedMinter) Ownable(msg.sender) {
+        authorizedMinter = _authorizedMinter;
+    }
+
+    function registerToken(address token) external onlyOwner {
+        require(token != address(0), "Invalid token");
+        require(!poolTokens.contains(token), "Token already registered");
+        poolTokens.add(token);
+        pools[token] = Pool(token, 0, 0);
+    }
+
+    function depositFromMint(address token, uint256 amount) external onlyAuthorizedMinter {
+        require(poolTokens.contains(token), "Unsupported token");
+        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        pools[token].totalDeposited += amount;
+        emit Deposited(msg.sender, token, amount);
+    }
+
+    function withdrawToUser(address token, address user, uint256 amount) external onlyAuthorizedMinter {
+        require(poolTokens.contains(token), "Unsupported token");
+        require(pools[token].totalDeposited >= amount, "Insufficient balance");
+        pools[token].totalDeposited -= amount;
+        IERC20(token).transfer(user, amount);
+        emit Withdrawn(user, token, amount);
+    }
+
+    function setYieldStrategy(address _strategy) external onlyOwner {
+        require(_strategy != address(0), "Invalid strategy");
+        yieldStrategy = _strategy;
+        emit StrategyUpdated(_strategy);
+    }
+
+    function forwardToYield(address token, uint256 amount) external onlyOwner {
+        require(poolTokens.contains(token), "Token not registered");
+        require(yieldStrategy != address(0), "No strategy set");
+        require(pools[token].totalDeposited >= amount, "Insufficient balance");
+
+        IERC20(token).approve(yieldStrategy, amount);
+        (bool success, ) = yieldStrategy.call(
+            abi.encodeWithSignature("stake(address,uint256)", token, amount)
+        );
+        require(success, "Yield stake failed");
+
+        pools[token].totalYield += amount;
+        pools[token].totalDeposited -= amount;
+        emit YieldClaimed(token, amount);
+    }
+
+    function getAllSupportedTokens() external view returns (address[] memory) {
+        return poolTokens.values();
+    }
+}---File Content End---
 
 ---Path and files name: ZiGT_github/IReparationsModel.sol
 ---Filename: IReparationsModel.sol
@@ -1396,6 +2402,73 @@ abstract contract EthicalGuard is Initializable, OwnableUpgradeable {
 }
 ---File Content End---
 
+---Path and files name: ZiGT_github/ZIGAddressRegistry.sol
+---Filename: ZIGAddressRegistry.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/// @title ZiGAddressRegistry
+/// @notice Maps custom ZiG1-prefixed addresses to real EVM addresses with group metadata
+contract ZiGAddressRegistry {
+    enum AddressGroup {
+        MAIN_REPARATIONS,
+        STRATEGIC,
+        PAN_AFRICAN,
+        UTILITY,
+        GOVERNANCE,
+        NFT,
+        SOUL_ID,
+        ACCESS_AF,
+        DIASPORA
+    }
+
+    struct Entry {
+        address evmAddress;
+        AddressGroup group;
+        string encodedZiG;
+    }
+
+    mapping(bytes32 => Entry) public registry;
+    mapping(address => string) public evmToZig;
+
+    event AddressRegistered(string zigEncoded, address indexed evmAddress, AddressGroup group);
+
+    /// @notice Registers a new ZIG1 address
+    /// @param zigEncoded Full encoded ZIG1 string (e.g., ZIG1-R-7FGX6Z...)
+    /// @param evmAddress The actual EVM address
+    /// @param group The logical group the address belongs to
+    function registerZigAddress(string memory zigEncoded, address evmAddress, AddressGroup group) external {
+        bytes32 hash = keccak256(bytes(zigEncoded));
+        require(registry[hash].evmAddress == address(0), "Already registered");
+
+        registry[hash] = Entry({
+            evmAddress: evmAddress,
+            group: group,
+            encodedZiG: zigEncoded
+        });
+
+        evmToZig[evmAddress] = zigEncoded;
+        emit AddressRegistered(zigEncoded, evmAddress, group);
+    }
+
+    /// @notice Returns EVM address for a given encoded ZIG address
+    function resolve(string memory zigEncoded) external view returns (address) {
+        return registry[keccak256(bytes(zigEncoded))].evmAddress;
+    }
+
+    /// @notice Returns encoded ZIG address for an EVM address
+    function reverse(address evmAddress) external view returns (string memory) {
+        return evmToZig[evmAddress];
+    }
+
+    /// @notice Returns metadata entry for a given ZIG string
+    function getEntry(string memory zigEncoded) external view returns (Entry memory) {
+        return registry[keccak256(bytes(zigEncoded))];
+    }
+}
+---File Content End---
+
 ---Path and files name: ZiGT_github/ZiGRWAToken.sol
 ---Filename: ZiGRWAToken.sol
 ---File Content Start---
@@ -1444,8 +2517,14 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-contract ReparationsDAO is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract ReparationsDAO is 
+    Initializable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
     address public timelock;
     mapping(address => bool) public authorized;
     uint256 public proposalCount;
@@ -1475,7 +2554,11 @@ contract ReparationsDAO is Initializable, OwnableUpgradeable, ReentrancyGuardUpg
     function initialize() public initializer {
         __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
     }
+
+    // Required override for UUPS
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     function setTimelock(address _timelock) external onlyOwner {
         timelock = _timelock;
@@ -1519,8 +2602,62 @@ contract ReparationsDAO is Initializable, OwnableUpgradeable, ReentrancyGuardUpg
         prop.executed = true;
         emit ProposalExecuted(proposalId);
     }
+}---File Content End---
+
+---Path and files name: ZiGT_github/lib/PriceUtils.sol
+---Filename: PriceUtils.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.6;
+
+// Import the IBandStdReference interface
+import "../Interfaces/IBandStdReference.sol";
+
+library PriceUtils {
+   
+function getPrice(
+    address oracleAddress,
+    string memory fullSymbol,
+    uint8 /* expectedDecimals - not used since LiveBandFeed normalizes to 18 */
+) internal view returns (uint256 price, uint8 decimals) {
+    // Split the symbol into base and quote
+    (string memory base, string memory quote) = _splitSymbol(fullSymbol);
+    
+    // Call LiveBandFeed
+    (uint256 rate,,) = IBandStdReference(oracleAddress).getReferenceData(base, quote);
+    require(rate > 0, "Invalid rate from oracle");
+    
+    // LiveBandFeed already normalizes to 18 decimals
+    return (rate, 18);
 }
----File Content End---
+
+// Helper function to split symbols
+function _splitSymbol(string memory symbol) internal pure returns (string memory base, string memory quote) {
+    bytes memory symbolBytes = bytes(symbol);
+    require(symbolBytes.length >= 6, "Invalid symbol length");
+    
+    bytes memory baseBytes = new bytes(3);
+    bytes memory quoteBytes = new bytes(3);
+    
+    for (uint i = 0; i < 3; i++) {
+        baseBytes[i] = symbolBytes[i];
+        quoteBytes[i] = symbolBytes[i+3];
+    }
+    
+    return (string(baseBytes), string(quoteBytes));
+}
+
+    /**
+     * @dev Calculates the value based on price and decimals.
+     * @param amount Amount to calculate value for
+     * @param price Price of the asset
+     * @param decimals Decimals of the price
+     * @return Calculated value
+     */
+    function calculateValue(uint256 amount, uint256 price, uint8 decimals) internal pure returns (uint256) {
+        return (amount * price) / (10 ** decimals);
+    }
+}---File Content End---
 
 ---Path and files name: ZiGT_github/EthicalGuardImpl.sol
 ---Filename: EthicalGuardImpl.sol
@@ -1558,8 +2695,8 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
-import "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
-import "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IAny2EVMMessageReceiver.sol";
+import "@chainlink/contracts-ccip/contracts/applications/CCIPReceiver.sol";
+import "@chainlink/contracts-ccip/contracts/interfaces/IAny2EVMMessageReceiver.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract ZiGGovernance is ERC20Votes, CCIPReceiver {
@@ -1841,7 +2978,7 @@ contract BandFeedRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable 
 ---Filename: ZiGTToken.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.29;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
@@ -1920,11 +3057,57 @@ contract ZiGTToken is
 }
 ---File Content End---
 
+---Path and files name: ZiGT_github/Interfaces/IBandFeedRegistry.sol
+---Filename: IBandFeedRegistry.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.0;
+
+interface IBandFeedRegistry {
+    function getFeedAddress(string memory assetPair) external view returns (address);
+}---File Content End---
+
+---Path and files name: ZiGT_github/Interfaces/IZiGOracle.sol
+---Filename: IZiGOracle.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.0;
+
+interface IZiGOracle {
+    function getRate(string memory symbol) external view returns (uint256 rate, uint8 decimals);
+}---File Content End---
+
+---Path and files name: ZiGT_github/Interfaces/IZiGGovernance.sol
+---Filename: IZiGGovernance.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.0;
+
+interface IZiGGovernance {
+    function governanceRole() external view returns (bytes32);
+    function hasRole(address account, bytes32 role) external view returns (bool);
+}---File Content End---
+
+---Path and files name: ZiGT_github/Interfaces/IBandStdReference.sol
+---Filename: IBandStdReference.sol
+---File Content Start---
+// interfaces/IBandStdReference.sol
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.0;
+
+interface IBandStdReference {
+    function getReferenceData(string memory base, string memory quote) external view returns (
+        uint256 rate,
+        uint256 lastUpdatedBase,
+        uint256 lastUpdatedQuote
+    );
+}---File Content End---
+
 ---Path and files name: ZiGT_github/ZiGUtilityToken.sol
 ---Filename: ZiGUtilityToken.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.29;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";

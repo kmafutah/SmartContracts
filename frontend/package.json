@@ -11,11 +11,12 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy0": "gh-pages -d dist --branch=gh-pages --message='Deploy '\"$(date)\"", 
-    "deploy": "gh-pages -d dist", 
+    "deploy0": "gh-pages -d dist --branch=gh-pages --message='Deploy '\"$(date)\"",
+    "deploy": "gh-pages -d dist",
     "build:abis": "bash scripts/build-abis.sh"
   },
   "dependencies": {
+    "axios": "^1.10.0",
     "ethers": "^6.7.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

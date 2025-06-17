@@ -1,32 +1,95 @@
 const { ethers, upgrades, network } = require("hardhat");
 const fs = require("fs");
 require("dotenv").config();
+const axios = require("axios");
+const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 // ======================
 // Configuration
 // ======================
 const STRATEGIC_DIRECTION = {
-  ZiGMirrorModel: 0,
-  Famous8PlusZAR: 1,
+  Famous8PlusZAR: 0,
+  G20ReserveModel: 1,
   PanAfroEurasianModel: 2,
-  G20ReserveModel: 3,
-  ReparationsModel: 4
+  ZiGMirrorModel: 3,
+  ReparationsModel: 4,
 };
 
 const TOKEN_SUPPLIES = {
-  GOVERNANCE: ethers.parseEther("1000000"),
-  MAIN_ZIGT: ethers.parseEther("10000000"),
-  UTILITY: ethers.parseEther("100000000"),
-  MEME: ethers.parseEther("1000000000"),
-  RWA: ethers.parseEther("1000"),
-  GAMEFI: ethers.parseEther("1000000")
+  GOVERNANCE: ethers.parseEther("1000000000"),          // 1B
+  MAIN_ZIGT: ethers.parseEther("500000000000"),         // 500B
+  UTILITY: ethers.parseEther("3000000000000"),          // 3T
+  MEME: ethers.parseEther("10000000000000"),            // 10T
+  RWA: ethers.parseEther("400000000"),                  // 400M (400M bars of gold)
+  GAMEFI: ethers.parseEther("40000000000"),             // 40B
 };
 
 const DEPLOYMENT_PARAMS = {
-  MIN_REDISTRIBUTION_SHARE: 2500, // 25%
-  GOVERNANCE_MINT_AMOUNT: ethers.parseEther("50000"),
-  REBALANCE_INTERVAL: 90 * 24 * 60 * 60 // 90 days in seconds
+  MIN_REDISTRIBUTION_SHARE: 3600, // 36% (honors 36 bars of gold per soul)
+  GOVERNANCE_MINT_AMOUNT: ethers.parseEther("50000000"), // 5% of new total
+  REBALANCE_INTERVAL: 60 * 24 * 60 * 60, // 60 days (shorter for launch agility)
 };
+
+// ======================
+// Helper Functions
+// ======================
+function toWei(val, decimals) {
+  const scaled = BigInt(Math.floor(Number(val) * 10 ** decimals));
+  return scaled.toString();
+}
+
+function requireAddress(name, address) {
+  if (!address || !ethers.isAddress(address)) {
+    throw new Error(`Invalid or missing address for ${name}: ${address}`);
+  }
+  return address;
+}
+
+async function fetchLivePrices() {
+  try {
+    console.log("\n📡 Fetching live prices from APIs...");
+    
+    const coingecko = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
+      params: {
+        ids: 'bitcoin,ethereum,binancecoin',
+        vs_currencies: 'usd',
+      },
+    });
+
+    const fx = await axios.get('https://openexchangerates.org/api/latest.json', {
+      params: {
+        app_id: process.env.OPENEXG_APPID,
+        symbols: 'ZAR,XOF,NGN,EGP,RUB,TRY,INR,AUD,EUR,GBP,CHF,JPY,NZD,CNY,CAD,XAU',
+      },
+    });
+
+    return {
+      BTCUSD: coingecko.data.bitcoin.usd,
+      ETHUSD: coingecko.data.ethereum.usd,
+      BNBUSD: coingecko.data.binancecoin.usd,
+      XAUUSD: 1 / fx.data.rates.XAU,
+      USDZAR: 1 / fx.data.rates.ZAR,
+      USDXOF: 1 / fx.data.rates.XOF,
+      USDNGN: 1 / fx.data.rates.NGN,
+      USDEGP: 1 / fx.data.rates.EGP,
+      USDRUB: 1 / fx.data.rates.RUB,
+      USDTRY: 1 / fx.data.rates.TRY,
+      USDINR: 1 / fx.data.rates.INR,
+      AUDUSD: fx.data.rates.AUD,
+      EURUSD: fx.data.rates.EUR,
+      GBPUSD: fx.data.rates.GBP,
+      USDCHF: fx.data.rates.CHF,
+      USDJPY: fx.data.rates.JPY,
+      NZDUSD: fx.data.rates.NZD,
+      CNYUSD: 1 / fx.data.rates.CNY,
+      CADUSD: fx.data.rates.CAD,
+      USDUSD: 1,
+    };
+  } catch (error) {
+    console.error("❌ Failed to fetch live prices:", error.message);
+    throw error;
+  }
+}
 
 // ======================
 // Main Deployment Script
@@ -34,185 +97,441 @@ const DEPLOYMENT_PARAMS = {
 async function main() {
   const [deployer] = await ethers.getSigners();
   console.log(`\n🚀 Deploying with account: ${deployer.address}`);
-  
-  // Deployment tracker
+  console.log("💰 Balance:", ethers.formatEther(await deployer.provider.getBalance(deployer.address)), "sFUEL");
+
   const deployedContracts = {};
 
   // ======================
   // Phase 1: Core Infrastructure
   // ======================
   console.log("\n🔨 Phase 1: Deploying Core Infrastructure...");
-  
+
   // 1.1 Registries
   deployedContracts.FeedRegistry = await deployContract("FeedRegistry", [], false);
   deployedContracts.BandFeedRegistry = await deployContract("BandFeedRegistry", [deployer.address], true);
-  
+
+  // Deploy LiveBandFeed and set real prices
+  console.log("\n📊 Deploying LiveBandFeed with real price data...");
+  const LiveBandFeed = await ethers.getContractFactory("LiveBandFeed");
+  const bandFeed = await LiveBandFeed.deploy();
+  await bandFeed.waitForDeployment();
+  const bandFeedAddress = await bandFeed.getAddress();
+  console.log(`✅ LiveBandFeed deployed at: ${bandFeedAddress}`);
+  deployedContracts.LiveBandFeed = bandFeedAddress;
+
+  // Fetch live prices and set them
+  const prices = await fetchLivePrices();
+  const highPrecision = new ethers.Contract(
+    bandFeedAddress,
+    [
+      "function setHighPrecisionPrice(string memory pair, uint256 price, uint8 decimals) external",
+      "function setPrice(string memory pair, uint256 price) external",
+    ],
+    deployer
+  );
+
+  for (const [pair, value] of Object.entries(prices)) {
+    if (isNaN(value) || value === null || value === undefined) {
+      console.warn(`⚠️ Skipping ${pair} due to invalid price: ${value}`);
+      continue;
+    }
+
+    const numValue = parseFloat(value);
+    if (['USDZAR', 'USDXOF', 'USDNGN', 'USDEGP', 'USDRUB', 'USDTRY', 'USDINR'].includes(pair)) {
+      const scaled = BigInt(Math.round(numValue * 1e12)) * BigInt(1e12);
+      await highPrecision.setHighPrecisionPrice(pair, scaled, 24);
+      console.log(`🔬 Set ${pair} with 24-decimal precision: ${numValue}`);
+    } else {
+      await highPrecision.setPrice(pair, ethers.parseUnits(numValue.toString(), 18));
+      console.log(`💱 Set ${pair} to ${numValue}`);
+    }
+  }
+
+  // Register feeds in BandFeedRegistry
+  console.log("\n🔗 Registering feeds in BandFeedRegistry...");
+  const bandFeedRegistry = await ethers.getContractAt("BandFeedRegistry", deployedContracts.BandFeedRegistry);
+  const assetPairs = [
+    "BTCUSD", "ETHUSD", "BNBUSD", "XAUUSD", "USDZAR", "USDXOF", "USDNGN",
+    "USDEGP", "USDRUB", "USDTRY", "USDINR", "AUDUSD", "EURUSD", "GBPUSD",
+    "USDCHF", "USDJPY", "NZDUSD", "CNYUSD", "CADUSD", "USDUSD",
+  ];
+
+  for (const pair of assetPairs) {
+    const tx = await bandFeedRegistry.setFeedAddress(pair, bandFeedAddress);
+    await tx.wait();
+    console.log(`📦 Registered ${pair} feed with BandFeedRegistry`);
+  }
+
   // 1.2 Governance
   deployedContracts.GovernanceToken = await deployContract(
-    "ZiGGovernanceToken",
+    "contracts/ZiGT_github/ZiGGovernanceToken.sol:ZiGGovernanceToken",
     [deployer.address, TOKEN_SUPPLIES.GOVERNANCE, deployer.address],
     true
   );
-  
+
   // 1.3 Vault & Access Control
   deployedContracts.RedistributionVault = await deployContract(
     "RedistributionVault",
     [
-      deployedContracts.GovernanceToken, // tokenAddress
-      deployer.address, // panAfricanTreasury
-      deployer.address, // diasporaDevelopmentPool
-      deployer.address, // historicalRestitutionFund
-      DEPLOYMENT_PARAMS.MIN_REDISTRIBUTION_SHARE
+      deployedContracts.GovernanceToken,
+      deployer.address,
+      deployer.address,
+      deployer.address,
+      DEPLOYMENT_PARAMS.MIN_REDISTRIBUTION_SHARE,
     ],
     true
   );
-  
-  deployedContracts.AccessVerifier = await deployContract("AccessVerifier", [], true);
-  deployedContracts.ReparationsDAO = await deployContract("ReparationsDAO", [], true);
-  
-  
+
+  deployedContracts.AccessVerifier = await deployContract("contracts/ZiGT_github/AccessVerifier.sol:AccessVerifier", [], true);
+  deployedContracts.ReparationsDAO = await deployContract("contracts/ZiGT_github/ReparationsDAO.sol:ReparationsDAO", [], true);
+
   // 1.4 Oracles
-  deployedContracts.OracleHub = await deployContract("ZiGOracleHub", [deployer.address], false);
-  
+  deployedContracts.OracleHub = await deployContract("contracts/ZiGT_github/ZiGOracleHub.sol:ZiGOracleHub", [deployer.address], false);
+
+  // Deploy CustomChainlinkOracle for each pair
+  console.log(`\n🔗 Deploying CustomChainlinkOracles for ${network.name}...`);
+  const customOracles = {};
+  const oraclePairs = [
+    "XAUUSD", "BTCUSD", "ETHUSD", "AUDUSD", "USDZAR", "USDXOF", "USDNGN",
+    "USDEGP", "USDRUB", "USDTRY", "USDINR", "EURUSD", "GBPUSD", "USDCHF",
+    "USDJPY", "NZDUSD", "CNYUSD", "CADUSD", "USDUSD",
+  ];
+  const highPrecisionPairs = ['USDZAR', 'USDXOF', 'USDNGN', 'USDEGP', 'USDRUB', 'USDTRY', 'USDINR', 'CNYUSD', 'CADUSD'];
+
+  for (let i = 0; i < oraclePairs.length; i++) {
+    const pair = oraclePairs[i];
+    customOracles[pair] = await deployContract("CustomChainlinkOracle", [18], false);
+    const oracle = await ethers.getContractAt("CustomChainlinkOracle", customOracles[pair]);
+
+    const raw = prices[pair];
+    if (raw === undefined || raw === null || isNaN(parseFloat(raw))) {
+      console.warn(`⚠️ Skipping ${pair}: Invalid or missing price (${raw})`);
+      continue;
+    }
+
+    const parsedValue = parseFloat(raw);
+    let price;
+    if (highPrecisionPairs.includes(pair)) {
+      const scaled = BigInt(Math.round(parsedValue * 1e9)) * BigInt(1e9);
+      price = scaled.toString();
+    } else {
+      price = ethers.parseUnits(parsedValue.toString(), 18).toString();
+    }
+
+    await oracle.setPrice(price);
+    console.log(`✅ Set ${i + 1} of ${oraclePairs.length}: ${pair} price to ${parsedValue} in CustomChainlinkOracle`);
+  }
+
+  // Deploy MultiOracle
+  console.log(`\n🔗 Deploying MultiOracle for ${network.name}...`);
+  const MultiOracle = await ethers.getContractFactory("MultiOracle");
+  const multiOracle = await MultiOracle.deploy();
+  await multiOracle.waitForDeployment();
+  const multiOracleAddress = await multiOracle.getAddress();
+  console.log(`✅ MultiOracle deployed at: ${multiOracleAddress}`);
+  deployedContracts.MultiOracle = multiOracleAddress;
+
+  const pairs = {
+    BTCUSD: { price: prices.BTCUSD, decimal: 18 },
+    ETHUSD: { price: prices.ETHUSD, decimal: 18 },
+    BNBUSD: { price: prices.BNBUSD, decimal: 18 },
+    XAUUSD: { price: prices.XAUUSD, decimal: 18 },
+    USDZAR: { price: prices.USDZAR, decimal: 18 },
+    USDXOF: { price: prices.USDXOF, decimal: 18 },
+    USDNGN: { price: prices.USDNGN, decimal: 18 },
+    USDEGP: { price: prices.USDEGP, decimal: 18 },
+    USDRUB: { price: prices.USDRUB, decimal: 18 },
+    USDTRY: { price: prices.USDTRY, decimal: 18 },
+    USDINR: { price: prices.USDINR, decimal: 18 },
+    AUDUSD: { price: prices.AUDUSD, decimal: 18 },
+    EURUSD: { price: prices.EURUSD, decimal: 18 },
+    GBPUSD: { price: prices.GBPUSD, decimal: 18 },
+    USDCHF: { price: prices.USDCHF, decimal: 18 },
+    USDJPY: { price: prices.USDJPY, decimal: 18 },
+    NZDUSD: { price: prices.NZDUSD, decimal: 18 },
+    CNYUSD: { price: prices.CNYUSD, decimal: 18 },
+    CADUSD: { price: prices.CADUSD, decimal: 18 },
+    USDUSD: { price: prices.USDUSD, decimal: 18 },
+  };
+
+for (const [pair, config] of Object.entries(pairs)) {
+  try {
+    const priceWei = toWei(config.price, config.decimal);
+    await multiOracle.setPrice(pair, priceWei, config.decimal);
+    console.log(`✅ Set ${pair} price: ${config.price} (${config.decimal}d)`);
+
+    // Verify the stored value
+    const key = ethers.keccak256(ethers.toUtf8Bytes(pair));
+    const stored = await multiOracle.prices(key);
+    const expected = parseFloat(config.price);
+    const actual = Number(stored) / 10 ** config.decimal;
+    const diff = Math.abs(expected - actual);
+    const match = diff < 1e-6 ? "✅" : "⚠️";
+
+    console.log(`   ${match} Stored: ${actual}, Expected: ${expected} (diff=${diff})`);
+
+  } catch (err) {
+    console.error(`❌ Failed to set ${pair}: ${err.message}`);
+  }
+}
+
+
+  // Set oracles in ZiGOracleHub
+  console.log("\n🔗 Setting up oracles in ZiGOracleHub...");
+  const oracleHub = await ethers.getContractAt("contracts/ZiGT_github/ZiGOracleHub.sol:ZiGOracleHub", deployedContracts.OracleHub);
+for (const pair of oraclePairs) {
+  const oracleAddr = customOracles[pair];
+  if (!oracleAddr) continue;
+
+  const isInverse = pair.startsWith("USD") && pair !== "USDUSD";
+
+  await oracleHub.setOracle(
+    pair,
+    oracleAddr,                       // custom chainlink-style feed
+    deployedContracts.LiveBandFeed,  // backup feed
+    18,                               // decimals
+    false,                            // isFallbackOnly = false
+    isInverse                         // inversion
+  );
+
+  console.log(`🔗 Oracle set for ${pair}: ${oracleAddr} (inverse=${isInverse})`);
+}
+
   // ======================
   // Phase 2: Main Tokens
   // ======================
   console.log("\n🪙 Phase 2: Deploying Main Tokens...");
-  
+
   // 2.1 Main ZiGT Token
   deployedContracts.MainZiGT = await deployZiGTToken(
-    "ZiG Reparations Token",
+    "Mansa's Mbizo Yzuri Refu Tano",
     "ZiG-R",
     STRATEGIC_DIRECTION.ReparationsModel,
     { metals: 6000, fiat: 3000, crypto: 1000 },
     deployedContracts.GovernanceToken,
-    deployedContracts.BandFeedRegistry
+    deployedContracts.BandFeedRegistry,
+    deployer.address
   );
   
+  deployedContracts.SubZiGT = await deployZiGTToken(
+    "ZiG Ndarama",
+    "ZiG-N",
+    STRATEGIC_DIRECTION.PanAfroEurasianModel,
+    { metals: 3000, fiat: 3500, crypto: 3500 },
+    deployedContracts.GovernanceToken,
+    deployedContracts.BandFeedRegistry,
+    deployer.address
+  );
+
+  deployedContracts.ZiGTToken = await deployContract(
+    "contracts/ZiGT_github/ZiGTToken.sol:ZiGTToken",
+    [
+      deployedContracts.MainZiGT,
+      deployedContracts.FeedRegistry,
+      "ZiG Token",
+      "ZiGT",
+      "1.0",
+    ],
+    true
+  );
+
   // Strategic Variants
   console.log("\n🔄 Deploying Strategic Variants...");
   const strategies = [
-    { name: "ZiG Stablecoin", symbol: "ZiG-S", strategy: STRATEGIC_DIRECTION.ZiGMirrorModel, ratio: { metals: 5000, fiat: 4000, crypto: 1000 } },
-    { name: "Stability-Oriented ZiG", symbol: "ZiG-SO", strategy: STRATEGIC_DIRECTION.Famous8PlusZAR, ratio: { metals: 6000, fiat: 3000, crypto: 1000 } },
-    { name: "Digital Forward ZiG", symbol: "ZiG-DF", strategy: STRATEGIC_DIRECTION.Famous8PlusZAR, ratio: { metals: 4000, fiat: 3000, crypto: 3000 } },
-    { name: "Afro-Centric ZiG", symbol: "ZiG-AC", strategy: STRATEGIC_DIRECTION.Famous8PlusZAR, ratio: { metals: 5500, fiat: 2500, crypto: 2000 } }
+    // Shona-themed Stablecoins
+    { name: "ZiG Rugare", symbol: "ZiG-RG", strategy: STRATEGIC_DIRECTION.ZiGMirrorModel, ratio: { metals: 5000, fiat: 4000, crypto: 1000 } },
+    { name: "ZiG Kubatana", symbol: "ZiG-KB", strategy: STRATEGIC_DIRECTION.Famous8PlusZAR, ratio: { metals: 6000, fiat: 3000, crypto: 1000 } },
+    // Pan-African Stablecoins
+    { name: "ZiG Ubuntu", symbol: "ZiG-UB", strategy: STRATEGIC_DIRECTION.PanAfroEurasianModel, ratio: { metals: 5000, fiat: 3000, crypto: 2000 } },
+    { name: "ZiG Sankofa", symbol: "ZiG-SF", strategy: STRATEGIC_DIRECTION.PanAfroEurasianModel, ratio: { metals: 4500, fiat: 2500, crypto: 3000 } },
+    // Pan-African Tokens
+    { name: "ZiG Corridor", symbol: "ZiG-PC", strategy: STRATEGIC_DIRECTION.PanAfroEurasianModel, ratio: { metals: 4000, fiat: 4000, crypto: 2000 } },
+    { name: "ZiG Mshale", symbol: "ZiG-MG", strategy: STRATEGIC_DIRECTION.PanAfroEurasianModel, ratio: { metals: 3000, fiat: 2000, crypto: 5000 } },
+    { name: "ZiG Shujaa", symbol: "ZiG-SH", strategy: STRATEGIC_DIRECTION.PanAfroEurasianModel, ratio: { metals: 3500, fiat: 4000, crypto: 2500 } },
+    // Shona-themed Tokens
+    { name: "ZiG Chiedza", symbol: "ZiG-CD", strategy: STRATEGIC_DIRECTION.Famous8PlusZAR, ratio: { metals: 4000, fiat: 3000, crypto: 3000 } },
+    { name: "ZiG Kukunda", symbol: "ZiG-KU", strategy: STRATEGIC_DIRECTION.Famous8PlusZAR, ratio: { metals: 5000, fiat: 2000, crypto: 3000 } },
+    { name: "ZiG Kubudirira", symbol: "ZiG-KD", strategy: STRATEGIC_DIRECTION.Famous8PlusZAR, ratio: { metals: 5500, fiat: 2500, crypto: 2000 } },
   ];
 
   for (const { name, symbol, strategy, ratio } of strategies) {
-    deployedContracts[symbol] = await deployZiGTToken(name, symbol, strategy, ratio, deployedContracts.ZiGGovernance,deployedContracts.BandFeedRegistry);
+    deployedContracts[symbol] = await deployZiGTToken(name, symbol, strategy, ratio, deployedContracts.GovernanceToken, deployedContracts.BandFeedRegistry, deployer.address);
   }
 
-// 2.2 Reparations Model
-// For upgradeable version:
-// console.log("Payment Token deployed to:", await paymentToken.getAddress());
-// console.log("ZiGT Token deployed to:", await zigtToken.getAddress());
-deployedContracts.ReparationsModel = await deployContract(
-  "ReparationsModel",
-  [
-    await deployedContracts.MainZiGT.getAddress(),         // paymentToken
-    await deployedContracts.MainZiGT.getAddress(),         // zigtToken
-    deployedContracts.RedistributionVault, // vault
-    deployedContracts.AccessVerifier,   // verifier
-    deployedContracts.ReparationsDAO,   // dao
-    deployedContracts.OracleHub         // oracleRouter
-  ],
-  true // isUpgradeable
-);
-
+  // 2.2 Reparations Model
+  deployedContracts.ReparationsModel = await deployContract(
+    "contracts/ZiGT_github/ReparationsModel.sol:ReparationsModel",
+    [
+      deployedContracts.ZiGTToken,
+      deployedContracts.ZiGTToken,
+      deployedContracts.RedistributionVault,
+      deployedContracts.AccessVerifier,
+      deployedContracts.ReparationsDAO,
+      deployedContracts.OracleHub,
+    ],
+    true
+  );
 
   // ======================
   // Phase 3: Governance
   // ======================
   console.log("\n🏛️ Phase 3: Deploying Governance...");
   deployedContracts.ZiGGovernance = await deployContract(
-    "ZiGGovernance",
+    "contracts/ZiGT_github/ZiGGovernance.sol:ZiGGovernance",
     [
-      process.env.ROUTER_ADDRESS,
+      requireAddress("Router", process.env.ROUTER_ADDRESS),
       "ZiG Governance",
       "ZGTGOV",
-      "1.0"
+      "1.0",
     ],
     false
   );
-  
+
   // ======================
   // Phase 4: Ecosystem Tokens
   // ======================
   console.log("\n💎 Phase 4: Deploying Ecosystem Tokens...");
-  
-  deployedContracts.ZiGUtilityToken = await deployContract(
-    "ZiGUtilityToken",
-    [TOKEN_SUPPLIES.UTILITY, deployer.address],
-    false
-  );
-  
-  deployedContracts.ZiGMemeToken = await deployContract(
-    "ZiGMemeToken",
-    [TOKEN_SUPPLIES.MEME],
-    false
-  );
-  
-  deployedContracts.ZiGNFT = await deployContract(
-    "ZiGNFT",
-    [deployer.address],
-    false
-  );
-  
-  deployedContracts.ZiGSoulboundToken = await deployContract(
-    "ZiGSoulboundToken",
-    [deployer.address],
-    false
-  );
-  
-  deployedContracts.ZiGGameFiToken = await deployContract(
-    "ZiGGameFiToken",
-    [TOKEN_SUPPLIES.GAMEFI],
-    false
-  );
-  
-  deployedContracts.ZiGRWAToken = await deployContract(
-    "ZiGRWAToken",
-    [TOKEN_SUPPLIES.RWA],
-    false
-  );
-  
-  deployedContracts.SoulReparationNFT = await deployContract(
-    "SoulReparationNFT",
-    [deployer.address],
-    false
-  );
-  
+
+  deployedContracts.ZiGUtilityToken = await deployContract("contracts/ZiGT_github/ZiGUtilityToken.sol:ZiGUtilityToken", [TOKEN_SUPPLIES.UTILITY, deployer.address], false);
+  deployedContracts.ZiGMemeToken = await deployContract("contracts/ZiGT_github/ZiGMemeToken.sol:ZiGMemeToken", [TOKEN_SUPPLIES.MEME], false);
+  deployedContracts.ZiGNFT = await deployContract("contracts/ZiGT_github/ZiGNFT.sol:ZiGNFT", [deployer.address], false);
+  deployedContracts.ZiGSoulboundToken = await deployContract("contracts/ZiGT_github/ZiGSoulboundToken.sol:ZiGSoulboundToken", [deployer.address], false);
+  deployedContracts.ZiGGameFiToken = await deployContract("contracts/ZiGT_github/ZiGGameFiToken.sol:ZiGGameFiToken", [TOKEN_SUPPLIES.GAMEFI], false);
+  deployedContracts.ZiGRWAToken = await deployContract("contracts/ZiGT_github/ZiGRWAToken.sol:ZiGRWAToken", [TOKEN_SUPPLIES.RWA], false);
+  deployedContracts.SoulReparationNFT = await deployContract("contracts/ZiGT_github/SoulReparationNFT.sol:SoulReparationNFT", [deployer.address], false);
+
   // ======================
   // Phase 5: Initialization
   // ======================
   console.log("\n⚙️ Phase 5: Initializing Contracts...");
-  
+
   // 5.1 DAO Setup
-  const dao = await ethers.getContractAt("ReparationsDAO", deployedContracts.ReparationsDAO);
+  const dao = await ethers.getContractAt("contracts/ZiGT_github/ReparationsDAO.sol:ReparationsDAO", deployedContracts.ReparationsDAO);
   await dao.setTimelock(deployer.address);
   await dao.setAuthorized(deployer.address, true);
-  
+
   // 5.2 Access Verifier
-  const verifier = await ethers.getContractAt("AccessVerifier", deployedContracts.AccessVerifier);
+  const verifier = await ethers.getContractAt("contracts/ZiGT_github/AccessVerifier.sol:AccessVerifier", deployedContracts.AccessVerifier);
   await verifier.setAfrican(deployer.address, true);
   await verifier.setDiaspora(deployer.address, true);
-  
+
   // 5.3 Governance Tokens
-  const govToken = await ethers.getContractAt("ZiGGovernanceToken", deployedContracts.GovernanceToken);
+  const govToken = await ethers.getContractAt("contracts/ZiGT_github/ZiGGovernanceToken.sol:ZiGGovernanceToken", deployedContracts.GovernanceToken);
   await govToken.mint(deployer.address, DEPLOYMENT_PARAMS.GOVERNANCE_MINT_AMOUNT);
-  
-  // 5.4 Oracle Setup
-  const oracleHub = await ethers.getContractAt("ZiGOracleHub", deployedContracts.OracleHub);
-  await oracleHub.setOracle("XAU", "0x214eD9Da11D2fbe465a6fc601a91E62EbEc1a0D6", 8, false, false);
-  await oracleHub.setOracle("BTC", "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c", 8, false, false);
-  
+
   console.log("✅ Initialization complete");
-  
+
   // ======================
   // Save Deployment
   // ======================
   saveDeploymentInfo(deployedContracts, deployer.address);
   displayDeploymentSummary(deployedContracts);
+}
+
+// ======================
+// Improved ZiGT Token Deployment Function
+// ======================
+async function deployZiGTToken(name, symbol, strategy, ratio, governance, bandfeeder, treasury) {
+    console.log(`\n📦 Deploying ZiGT Token: ${name} (${symbol})...`);
+    
+    // Ensure ratio values are properly formatted
+    const ratioStruct = {
+        metal: ethers.toBigInt(ratio.metals || 0),
+        fiat: ethers.toBigInt(ratio.fiat || 0),
+        crypto: ethers.toBigInt(ratio.crypto || 0)
+    };
+
+    // Verify all required parameters
+    const routerAddress = requireAddress("Router", process.env.ROUTER_ADDRESS);
+    if (!governance || !bandfeeder || !treasury) {
+        throw new Error("Missing required deployment parameters");
+    }
+
+    console.log("Deployment Parameters:", {
+        name,
+        symbol,
+        strategy,
+        ratio: ratioStruct,
+        governance,
+        bandfeeder,
+        treasury
+    });
+
+    try {
+        const Factory = await ethers.getContractFactory("contracts/ZiGT_github/ZiGT.sol:ZiGT");
+        
+        const zigt = await upgrades.deployProxy(Factory, [
+            routerAddress,
+            bandfeeder,
+            governance,
+            treasury,
+            strategy,
+            ratioStruct
+        ], {
+            kind: 'uups',
+            timeout: 120000,
+            initializer: "initialize(address,address,address,address,uint8,(uint256,uint256,uint256))"
+        });
+        
+        await zigt.waitForDeployment();
+        const address = await zigt.getAddress();
+        console.log(`✅ ${symbol} deployed to: ${address}`);
+
+        // Add delay before initialization
+        console.log("⏳ Waiting 15 seconds before initialization...");
+        await new Promise(resolve => setTimeout(resolve, 15000));
+
+        // Initialize price cache
+        await initializePriceCache(address);
+        
+        return address;
+    } catch (error) {
+        console.error(`❌ Failed to deploy ${symbol}:`, {
+            error: error.message,
+            reason: error.reason,
+            data: error.data
+        });
+        throw error;
+    }
+}
+
+async function initializePriceCache(tokenAddress) {
+    console.log(`🔁 Initializing price cache for token at ${tokenAddress}...`);
+    const token = await ethers.getContractAt("contracts/ZiGT_github/ZiGT.sol:ZiGT", tokenAddress);
+    
+    try {
+        // Verify oracle setup first
+        const xauOracle = await token.assetOracles(ethers.keccak256(ethers.toUtf8Bytes("XAUUSD")));
+        if (!xauOracle.chainlinkFeed && !xauOracle.bandFeed) {
+            throw new Error("XAUUSD oracle not configured");
+        }
+
+        // Update prices in batches
+        const assetKeys = [
+            "BTCUSD", "ETHUSD", "BNBUSD", "XAUUSD", "USDZAR", 
+            "USDXOF", "USDNGN", "USDEGP", "USDRUB", "USDTRY",
+            "USDINR", "AUDUSD", "EURUSD", "GBPUSD", "USDCHF",
+            "USDJPY", "NZDUSD", "CNYUSD", "CADUSD", "XAGUSD"
+        ].map(k => ethers.keccak256(ethers.toUtf8Bytes(k)));
+
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < assetKeys.length; i += BATCH_SIZE) {
+            const batch = assetKeys.slice(i, i + BATCH_SIZE);
+            console.log(`🔄 Updating price batch ${i/BATCH_SIZE + 1} of ${Math.ceil(assetKeys.length/BATCH_SIZE)}`);
+            
+            try {
+                const tx = await token.updateCachedPrices(batch);
+                await tx.wait();
+                console.log(`✅ Batch updated`);
+            } catch (batchError) {
+                console.warn(`⚠️ Failed batch:`, batchError.message);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+    } catch (error) {
+        console.warn("⚠️ Price initialization failed (can be done manually later):", error.message);
+    }
 }
 
 // ======================
@@ -225,8 +544,9 @@ async function deployContract(contractName, args = [], isUpgradeable = false) {
   let contract;
   if (isUpgradeable) {
     contract = await upgrades.deployProxy(Factory, args, { 
-      kind: 'uups',
-      timeout: 120000
+      kind: 'uups', 
+      timeout: 120000,
+      pollingInterval: 5000 // More frequent status checks
     });
   } else {
     contract = await Factory.deploy(...args);
@@ -236,8 +556,7 @@ async function deployContract(contractName, args = [], isUpgradeable = false) {
   const address = await contract.getAddress();
   console.log(`✅ ${contractName} deployed to: ${address}`);
   
-  // Verification (skip for local networks)
-  if (network.name !== 'hardhat') {
+  if (network.name !== 'hardhat' && network.name !== 'localhost') {
     await verifyWithRetry(address, contractName, args, isUpgradeable);
   }
   
@@ -252,13 +571,23 @@ async function verifyWithRetry(address, contractName, args, isUpgradeable, retri
     
     if (isUpgradeable) {
       const impl = await upgrades.erc1967.getImplementationAddress(address);
-      await hre.run("verify:verify", { address: impl });
+      await hre.run("verify:verify", { 
+        address: impl, 
+        constructorArguments: [] 
+      });
     } else {
-      await hre.run("verify:verify", { address, constructorArguments: args });
+      await hre.run("verify:verify", { 
+        address, 
+        constructorArguments: args 
+      });
     }
     
     console.log(`✅ Verified ${contractName}`);
   } catch (error) {
+    if (error.message.includes("already been verified")) {
+      console.log(`✅ ${contractName} already verified on block explorer`);
+      return;
+    }
     if (retries > 0) {
       console.log(`⚠️ Retrying verification (${retries} left)...`);
       await new Promise(resolve => setTimeout(resolve, 5000));
@@ -269,65 +598,13 @@ async function verifyWithRetry(address, contractName, args, isUpgradeable, retri
   }
 }
 
-// async function deployZiGTToken(name, symbol, strategy, ratio, governance, bandfeeder) {
-//   console.log(`\n📦 Deploying ZiGT Token: ${name} (${symbol})...`);
-  
-//   const initializerArgs = [
-//     process.env.ROUTER_ADDRESS,
-//     bandfeeder,
-//     governance,
-//     strategy,
-//     ratio
-//   ];
-  
-//   const zigt = await deployContract("ZiGT", initializerArgs, true);
-//   return zigt;
-// }
-
-async function deployZiGTToken(name, symbol, strategy, ratio, governance, bandfeeder) {
-  console.log(`\n📦 Deploying ZiGT Token: ${name} (${symbol})...`);
-
-  const Factory = await ethers.getContractFactory("ZiGT");
-
-  // Define the arguments for the initialize function
-  const initializerArgs = [
-    process.env.ROUTER_ADDRESS,
-    bandfeeder,
-    governance, // This will be used as initialGovernance in ZiGCrossChain
-    strategy,
-    ratio
-  ];
-
-  // Define the initializer signature
-  // Based on ZiGT.sol: initialize(address,address,address,StrategicDirection,ReserveRatio)
-  // StrategicDirection (enum) is a uint8 in Solidity, and ReserveRatio (struct) is encoded as its members.
-  // So the signature will look like: initialize(address,address,address,uint8,(uint256,uint256,uint256))
-  const initializerSignature = "initialize(address,address,address,uint8,(uint256,uint256,uint256))";
-
-  const zigt = await upgrades.deployProxy(Factory, initializerArgs, {
-    kind: 'uups',
-    timeout: 120000,
-    initializer: initializerSignature 
-  });
-
-  await zigt.waitForDeployment();
-  const address = await zigt.getAddress();
-
-  console.log(`✅ ${symbol} deployed to: ${address}`);
-    // Verification (skip for local networks)
-  if (network.name !== 'hardhat') {
-    await verifyWithRetry(address, name, initializerArgs, true);
-  }
-  return zigt;
-}
-
 function saveDeploymentInfo(contracts, deployer) {
   const deploymentInfo = {
     network: network.name,
     chainId: process.env.CHAIN_ID,
     deployer: deployer,
     timestamp: new Date().toISOString(),
-    contracts: contracts
+    contracts: contracts,
   };
 
   fs.mkdirSync("deployments", { recursive: true });

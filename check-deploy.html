@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Check SKALE Contract</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  </head>
+  <body>
+    <h1>Check Contract Deployment</h1>
+    <button onclick="checkCode()">Check Code</button>
+    <pre id="output"></pre>
+
+    <script>
+      async function checkCode() {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        const contractAddress = "0x5373E7FB40638Db965C85902e52FAf6Ec1A32f9d";
+        const code = await provider.getCode(contractAddress);
+        document.getElementById("output").innerText = code;
+      }
+    </script>
+  </body>
+</html>
+

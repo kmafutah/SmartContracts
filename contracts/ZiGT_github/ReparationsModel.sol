@@ -109,22 +109,31 @@ contract ReparationsModel is
     }
 
 
-function redeem(uint256 amount) external nonReentrant reparationBeforeProfit {
-        require(zigtToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
-        require(amount > 0, "Zero amount");
-        require(zigtToken.balanceOf(msg.sender) >= amount, "Insufficient balance");
-        uint256 fee = _getFee(msg.sender, amount);
-        uint256 net = amount - fee;
-        // Burn tokens
-        zigtToken.transferFrom(msg.sender, address(this), amount);
-        // Route fee to vault
-        (bool sent, ) = payable(address(redistributionVault)).call{value: fee}("");
-        require(sent, "Fee transfer failed");
-        // Payout basket (mock: just send ETH, in real: send basket assets)
-        payable(msg.sender).transfer(net);
-        emit Redeemed(msg.sender, net, fee);
-    }
+// function redeem(uint256 amount) external nonReentrant reparationBeforeProfit {
+//         require(zigtToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+//         require(amount > 0, "Zero amount");
+//         require(zigtToken.balanceOf(msg.sender) >= amount, "Insufficient balance");
+//         uint256 fee = _getFee(msg.sender, amount);
+//         uint256 net = amount - fee;
+//         // Burn tokens
+//         zigtToken.transferFrom(msg.sender, address(this), amount);
+//         // Route fee to vault
+//         (bool sent, ) = payable(address(redistributionVault)).call{value: fee}("");
+//         require(sent, "Fee transfer failed");
+//         // Payout basket (mock: just send ETH, in real: send basket assets)
+//         payable(msg.sender).transfer(net);
+//         emit Redeemed(msg.sender, net, fee);
+//     }
 
+function redeem(uint256 amount) external nonReentrant reparationBeforeProfit {
+    require(zigtToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+    require(amount > 0, "Zero amount");
+    uint256 fee = _getFee(msg.sender, amount);
+    uint256 net = amount - fee;
+    require(paymentToken.transfer(address(redistributionVault), fee), "Fee transfer failed");
+    require(paymentToken.transfer(msg.sender, net), "Payout failed");
+    emit Redeemed(msg.sender, net, fee);
+}
     function _getFee(address user, uint256 amount) internal view returns (uint256) {
         if (accessVerifier.eligibleForReducedFee(user)) {
             return (amount * REDUCED_FEE_BPS) / 10000;

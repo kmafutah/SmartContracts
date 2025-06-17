@@ -1,6 +1,12 @@
 const { ethers, upgrades } = require("hardhat");
 const fs = require("fs");
 const path = require("path");
+const { getNetworkConfig } = require("./networkConfig");
+const network = hre.network.name;
+const useMock = network.includes("skale");
+const isZkEVM = network.includes("zkevm");
+
+const zkZero = "0x0000000000000000000000000000000000000000";
 
 // Utility functions
 async function deployWithRetries(contractFactory, args, overrides = {}, retries = 3, delay = 2000) {
@@ -70,20 +76,20 @@ async function main() {
     console.log(`🔐 Deploying on ${network} as: ${deployer.address}`);
 
     // Configure deployment settings
-    // const deploymentConfig = {
-    //   gasOverrides: useMock ? {
-    //     gasLimit: 8000000,
-    //     gasPrice: ethers.parseUnits("100", "gwei")
-    //   } : {}
-    // };
-    // Configure deployment settings
     const deploymentConfig = {
-      gasOverrides: useMock ? { 
-        gasPrice: 0  // SKALE chains have 0 gas price
+      gasOverrides: useMock ? {
+        gasLimit: 8000000,
+        gasPrice: ethers.parseUnits("100", "gwei")
       } : {}
     };
+    // Configure deployment settings
+    // const deploymentConfig = {
+    //   gasOverrides: useMock ? { 
+    //     gasPrice: 0  // SKALE chains have 0 gas price
+    //   } : {}
+    // };
 
-    await checkDeployerBalance(deployer);
+    // await checkDeployerBalance(deployer);
 
     // Deploy Mocks for SKALE
     let mockContracts = {};
@@ -194,22 +200,35 @@ async function main() {
       GAS_ORACLE: ethers.ZeroAddress
     };
 
-    const tokenAddresses = useMock ? {
-      USDC: mockContracts.USDC.target,
-      USDT: mockContracts.USDT.target,
-      DAI: mockContracts.DAI.target,
-      WETH: mockContracts.WETH.target,
-      STETH: mockContracts.STETH.target,
-      CURVE_3POOL: mockContracts.CURVE_3POOL.target,
-      UNISWAP_V2: mockContracts.UNISWAP_V2.target,
-      UNISWAP_V3: mockContracts.UNISWAP_V3.target,
-      UNISWAP_V3_QUOTER: mockContracts.UNISWAP_V3_QUOTER.target,
-      CONVEX: mockContracts.CONVEX.target,
-      CURVE_3POOL_TOKEN: mockContracts.CURVE_3POOL_TOKEN.target,
-      AAVE_LENDING_POOL: mockContracts.AAVE_LENDING_POOL.target,
-      SKALE_IMA_BRIDGE: mockContracts.SKALE_IMA_BRIDGE.target,
-      GAS_ORACLE: mockContracts.GAS_ORACLE.target
-    } : mainnetAddresses;
+  const zkEvmAddresses = {
+    USDC: "0xA8CE8aee21bC2A48a5EF670afCc9274C7bbbC035", // zkEVM USDC
+    USDT: "0x1E4a5963aBFD975d8c9021ce480b42188849D41d", // zkEVM USDT
+    DAI: "0xC5015b9d9161Dca7e18e32f6f25C4aD850731Fd4", // zkEVM DAI
+    WETH: "0x4F9A0e7FD2Bf6067db6994CF12E4495Df938E6e9", // zkEVM WETH
+    AAVE_LENDING_POOL: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+    UNISWAP_V3: "0x0E0434DDf5273F71250A99c6fbcABfeCA301DE5F",
+    UNISWAP_V3_QUOTER: "0xFDC32821e491759e680eb4582ec2e65e8F925239",
+    CURVE_3POOL: zkZero,
+    CONVEX: zkZero,
+
+    // ZiG token variants
+    "ZiG-R": "0xe8fD1D1933b33b9c23E19F0a7FE7e7d3513181d8",
+    "ZiG-N": "0x0C29a92536FCBad97BdE6F32c1C828B7372D614F",
+    "ZiG-RG": "0x3fb3FB12bBD92a72Ff6EE7943166c2141CC830f3",
+    "ZiG-KB": "0x0FC1D3a789D4E0f34F818664a9cee3Eb36d7D4D3",
+    "ZiG-UB": "0xB7908962811106b7AD624273D7B22634099E8B44",
+    "ZiG-SF": "0x632612061BA979dFef4E2702d858667bBf04698e",
+    "ZiG-PC": "0xa5E5822167F4A6272717Bf0338A2f6805B5f20c5",
+    "ZiG-MG": "0x58Ba1Ff84E7e35546A4A879ad1EBf3a819a4c8F9",
+    "ZiG-SH": "0x0ADa5965b949716dD7d956049E35FD86fD385467",
+    "ZiG-CD": "0xB3637907ae9bFEB13Bfd3c952b4f57Be1Cc7eca3",
+    "ZiG-KU": "0x506C1302ECc7B00A25003Df36b12409a5A80aA6d",
+    "ZiG-KD": "0x76A5E52b6ad5cdeFf9aE80C239fcf544Bd370Be2",
+  };
+
+    const tokenAddresses = useMock ? mockContracts : getNetworkConfig(network);
+
+
 
     // --- Deploy Registry ---
     console.log("📦 Deploying Registry...");
@@ -299,7 +318,7 @@ async function main() {
           }
         );
       } else {
-        const FlashloanExecutor = await ethers.getContractFactory("FlashloanExecutor");
+        const FlashloanExecutor = await ethers.getContractFactory("contracts/pmms/core/FlashloanExecutor.sol:FlashloanExecutor");
         const providerAddress = process.env.AAVE_ADDRESS_PROVIDER;
         if (!providerAddress) {
           throw new Error("Missing AAVE_ADDRESS_PROVIDER in .env for non-mock network");
@@ -365,6 +384,7 @@ async function main() {
       "StrategyStakingTokenArbitrage",
       "StrategyTriangularArbitrage",
       "StrategyYieldLoop",
+      "StrategyZiGTArbitrage"
     ];
 
     const strategyInfo = {};
@@ -390,6 +410,17 @@ async function main() {
               ...deploymentConfig.gasOverrides
             }
           );
+        } else // Special case for ZiGT strategy:
+          if (contractName === "StrategyZiGTArbitrage") {
+            strategy = await deployProxyWithRetries(
+              Strategy,
+              [registryAddress],
+              {
+                initializer: "initialize",
+                kind: "uups",
+                ...deploymentConfig.gasOverrides
+              }
+            );
         } else if (contractName === "StrategyFlashMintArbitrage") {
           strategy = await deployProxyWithRetries(
             Strategy,
@@ -484,3 +515,4 @@ async function main() {
 }
 
 main();
+

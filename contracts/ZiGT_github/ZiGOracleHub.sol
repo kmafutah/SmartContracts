@@ -4,9 +4,10 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-interface IChainlinkAggregator {
+interface IOracle {
     function latestAnswer() external view returns (int256);
     function decimals() external view returns (uint8);
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80);
 }
 
 contract ZiGOracleHub is Ownable, ReentrancyGuard {
@@ -56,12 +57,13 @@ contract ZiGOracleHub is Ownable, ReentrancyGuard {
         bytes32 key = keccak256(abi.encodePacked(symbol));
         OracleConfig memory config = oracles[key];
         require(config.source != address(0), "Oracle not found");
+        
 
         if (config.isCustom) {
             // Add support for your custom logic here
             revert("Custom oracle logic not implemented");
         } else {
-            int256 answer = IChainlinkAggregator(config.source).latestAnswer();
+            int256 answer = IOracle(config.source).latestAnswer();
             require(answer > 0, "Invalid rate");
             rate = uint256(answer);
 
@@ -73,6 +75,8 @@ contract ZiGOracleHub is Ownable, ReentrancyGuard {
         }
     }
 
+
+
     /// Triangulates FX rate using: rate(A/B) = rate(A/USD) / rate(B/USD)
     function getTriangulatedRate(
         string memory baseSymbol,
@@ -82,9 +86,22 @@ contract ZiGOracleHub is Ownable, ReentrancyGuard {
         (uint256 quoteRate, uint8 quoteDecimals) = getRate(quoteSymbol);
 
         require(quoteRate > 0, "Quote rate zero");
-        require(baseDecimals == quoteDecimals, "Mismatched decimals");
+        require(baseRate > 0, "Base rate zero"); 
 
         rate = (baseRate * (10 ** baseDecimals)) / quoteRate;
         decimals = baseDecimals;
     }
+
+    // ZiGOracleHub.sol
+function isOracleActive(string memory symbol) public view returns (bool) {
+    bytes32 key = keccak256(abi.encodePacked(symbol));
+    OracleConfig memory config = oracles[key];
+    if(config.source == address(0)) return false;
+    
+    try IOracle(config.source).latestRoundData() returns (uint80, int256, uint256 updatedAt, uint256, uint80) {
+        return block.timestamp - updatedAt < 24 hours;
+    } catch {
+        return false;
+    }
+}
 }

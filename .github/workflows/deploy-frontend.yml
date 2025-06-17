@@ -3,44 +3,67 @@ name: Deploy Frontend to GitHub Pages
 on:
   push:
     branches:
-      - main # Or your main development branch
+      - main # Trigger workflow on pushes to the main branch
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
+
+permissions:
+  contents: read      # Grants read access to the repository content
+  pages: write        # Grants write access to GitHub Pages for deployment
+  id-token: write     # Grants write access to the id-token for authentication (OIDC)
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    permissions: # <--- ADD THIS BLOCK
-      contents: write # This grants write permission to the GITHUB_TOKEN
+  build:
+    name: Build Frontend
+    runs-on: ubuntu-latest # Execute on the latest Ubuntu runner
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4 # Checkout the repository code
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4 # Set up Node.js environment
         with:
-          node-version: '20' # Or your preferred Node.js version
-
-      - name: Cache Node Modules
-        id: cache-npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm # Cache npm's global cache directory
-          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
+          node-version: '20' # Or your preferred Node.js version (e.g., '18', '20')
+          cache: 'npm' # Cache npm dependencies
 
       - name: Install dependencies
-        run: npm ci # Use npm ci for clean installs in CI, or npm install
+        # The working-directory ensures npm commands run in the 'frontend' directory
+        run: npm ci
         working-directory: ./frontend
 
-      - name: Configure Git for gh-pages
-        run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-        working-directory: ./frontend # Ensure Git commands run in the frontend context if it's a sub-repo clone
+      - name: Build project
+        # Execute the Vite build command for the frontend application
+        run: npm run build
+        working-directory: ./frontend
+
+      - name: Upload production-ready build files
+        # Upload the built 'dist' folder from the frontend directory as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-files
+          path: ./frontend/dist # Path to your Vite build output directory within 'frontend'
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build # This job depends on the successful completion of the 'build' job
+    runs-on: ubuntu-latest # Execute on the latest Ubuntu runner
+    # Only deploy if the push was to the main branch and the build job succeeded
+    if: github.ref == 'refs/heads/main' && needs.build.result == 'success'
+    steps:
+      - name: Download artifact
+        # Download the 'production-files' artifact from the 'build' job
+        uses: actions/download-artifact@v4
+        with:
+          name: production-files
+          # Download it to the current working directory, which will be the root for peaceiris action
+          path: ./dist 
 
       - name: Deploy to GitHub Pages
-        run: npm run deploy
-        working-directory: ./frontend
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This is still good practice to explicitly pass
+        # Use the peaceiris action for deployment
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }} # Automatically provided GitHub token for authentication
+          publish_dir: ./dist # Specify the directory to publish to GitHub Pages (this is the downloaded artifact)
+          # The cname option is useful if you use a custom domain.
+          # If you don't have a CNAME file and are using a custom domain, add:
+          # cname: 'your-custom-domain.com'
+          # If you are not using a custom domain and rely on the repo name in the URL, you might not need a CNAME file.

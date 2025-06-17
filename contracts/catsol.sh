@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Define the folders to search
-FOLDERS=("pmms" "zigt_stablecoin_v5" "ZiGT_github")
+# Define the folders to search (removed commas)
+FOLDERS=("pmms" "zigt_stablecoin_v5" "ZiGT_github" "ZiGEcocash" "ZiG")
 
 # Loop through each folder
 for FOLDER in "${FOLDERS[@]}"; do

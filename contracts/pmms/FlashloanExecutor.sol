@@ -7,7 +7,7 @@ import "@aave/core-v3/contracts/flashloan/base/FlashLoanSimpleReceiverBase.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract FlashloanExecutor is FlashLoanSimpleReceiverBase, Ownable {
+contract x_FlashloanExecutor is FlashLoanSimpleReceiverBase, Ownable {
     IRegistry public immutable registry;
     address public strategyExecutor;
 
