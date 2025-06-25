@@ -1,4 +1,6 @@
 // MutapaReserveBacking.sol
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
 contract MutapaReserveBacking {
     address public oracle;
     mapping(string => uint256) public reserveAssets;

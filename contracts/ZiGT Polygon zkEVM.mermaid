@@ -1,0 +1,77 @@
+graph TD
+  subgraph Oracles & Feeds
+    FeedRegistry
+    BandFeedRegistry
+    LiveBandFeed
+    OracleHub
+    MultiOracle
+  end
+
+  subgraph Core Tokens
+    MainZiGT
+    SubZiGT
+    ZiGTToken
+  end
+
+  subgraph Regional Tokens
+    ZiG-RG
+    ZiG-KB
+    ZiG-UB
+    ZiG-SF
+    ZiG-PC
+    ZiG-MG
+    ZiG-SH
+    ZiG-CD
+    ZiG-KU
+    ZiG-KD
+  end
+
+  subgraph Redistribution & Reparations
+    RedistributionVault
+    ReparationsModel
+    AccessVerifier
+    ReparationsDAO
+  end
+
+  subgraph Governance & Identity
+    GovernanceToken
+    ZiGGovernance
+    ZiGSoulboundToken
+  end
+
+  subgraph Utility & Culture
+    ZiGUtilityToken
+    ZiGMemeToken
+    ZiGNFT
+    ZiGGameFiToken
+    ZiGRWAToken
+    SoulReparationNFT
+  end
+
+  %% Relationships
+  FeedRegistry --> MainZiGT
+  BandFeedRegistry --> MainZiGT
+  LiveBandFeed --> MainZiGT
+  OracleHub --> MultiOracle
+  MultiOracle --> MainZiGT
+
+  MainZiGT --> ZiGTToken
+  MainZiGT -->|mints| Regional Tokens
+  ZiGTToken --> RedistributionVault
+  RedistributionVault -->|distributes| Regional Tokens
+  RedistributionVault --> ReparationsModel
+  ReparationsModel --> ReparationsDAO
+  AccessVerifier --> ReparationsDAO
+
+  GovernanceToken --> ZiGGovernance
+  ZiGGovernance --> ReparationsDAO
+  ZiGSoulboundToken --> ZiGGovernance
+
+  ZiGTToken --> ZiGUtilityToken
+  ZiGTToken --> ZiGMemeToken
+  ZiGTToken --> ZiGNFT
+  ZiGTToken --> ZiGGameFiToken
+  ZiGTToken --> ZiGRWAToken
+  ZiGTToken --> SoulReparationNFT
+
+  SoulReparationNFT --> ReparationsDAO

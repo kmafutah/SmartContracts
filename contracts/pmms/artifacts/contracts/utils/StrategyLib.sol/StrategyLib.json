@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "StrategyLib",
+  "sourceName": "contracts/utils/StrategyLib.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea2646970667358221220dc8524509ef11bb90861a4fdff203ee67c1f26fbf2cb9aae7936b2d06e13508564736f6c634300081d0033",
+  "deployedBytecode": "0x600080fdfea2646970667358221220dc8524509ef11bb90861a4fdff203ee67c1f26fbf2cb9aae7936b2d06e13508564736f6c634300081d0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

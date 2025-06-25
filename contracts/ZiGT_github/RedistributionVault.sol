@@ -52,17 +52,17 @@ contract RedistributionVault is Initializable, OwnableUpgradeable, UUPSUpgradeab
     //     emit FundsDistributed(panAfrican, diaspora, restitution);
     // }
 
-function distribute() public onlyOwner {
-    uint256 balance = token.balanceOf(address(this));
-    require(balance > 0, "No funds");
-    uint256 panAfrican = (balance * 40) / 100;
-    uint256 diaspora = (balance * 30) / 100;
-    uint256 restitution = balance - panAfrican - diaspora;
-    require(token.transfer(panAfricanTreasury, panAfrican), "Transfer failed");
-    require(token.transfer(diasporaDevelopmentPool, diaspora), "Transfer failed");
-    require(token.transfer(historicalRestitutionFund, restitution), "Transfer failed");
-    emit FundsDistributed(panAfrican, diaspora, restitution);
-}
+    function distribute() public onlyOwner {
+        uint256 balance = token.balanceOf(address(this));
+        require(balance > 0, "No funds");
+        uint256 panAfrican = (balance * 40) / 100;
+        uint256 diaspora = (balance * 30) / 100;
+        uint256 restitution = balance - panAfrican - diaspora;
+        require(token.transfer(panAfricanTreasury, panAfrican), "Transfer failed");
+        require(token.transfer(diasporaDevelopmentPool, diaspora), "Transfer failed");
+        require(token.transfer(historicalRestitutionFund, restitution), "Transfer failed");
+        emit FundsDistributed(panAfrican, diaspora, restitution);
+    }
     function setRecipients(
         address payable _panAfricanTreasury,
         address payable _diasporaDevelopmentPool,
@@ -76,6 +76,11 @@ function distribute() public onlyOwner {
     function setMinRedistributionShare(uint256 _bps) external onlyOwner {
         require(_bps <= 10000, "Too high");
         minRedistributionShare = _bps;
+    }
+
+    /// @notice Returns the current recipient addresses
+    function getRecipients() public view returns (address, address, address) {
+        return (panAfricanTreasury, diasporaDevelopmentPool, historicalRestitutionFund);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}

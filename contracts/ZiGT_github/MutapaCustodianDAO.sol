@@ -1,4 +1,6 @@
 // MutapaCustodianDAO.sol
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
 contract MutapaCustodianDAO {
     address[] public committee;
     mapping(address => bool) public isMember;

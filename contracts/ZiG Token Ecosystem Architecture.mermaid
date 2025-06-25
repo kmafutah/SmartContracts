@@ -35,6 +35,10 @@ classDiagram
         +getTriangulatedRate(baseSymbol, quoteSymbol): (uint256, uint8)
     }
 
+    class FeedRegistry
+    class BandFeedRegistry
+    class LiveBandFeed
+
     class IChainlinkAggregator {
         <<interface>>
         +latestAnswer(): int256
@@ -98,6 +102,12 @@ classDiagram
         +snapshot()
     }
 
+    class ZiGGovernance {
+        +propose()
+        +vote()
+        +execute()
+    }
+
     class ZiGRWAToken {
         +assetPartitions: mapping<uint256, AssetInfo>
         +mintPartition(to, amount, assetType, series, tranche)
@@ -137,13 +147,38 @@ classDiagram
         +execute(proposalId)
     }
 
+    class ZiG_RG
+    class ZiG_KB
+    class ZiG_UB
+    class ZiG_SF
+    class ZiG_PC
+    class ZiG_MG
+    class ZiG_SH
+    class ZiG_CD
+    class ZiG_KU
+    class ZiG_KD
 
     ZiGT --|> ZiGCrossChain : extends
     ZiGT --|> ZiGBondingCurve : extends
     ZiGT ..> ZiGOracleHub : uses (for price data)
-    ReparationsModel --> ZiGOracleHub : uses (via IOracleRouter)
-    ZiGOracleHub ..|> IChainlinkAggregator : interacts with
+    ZiGT <|-- ZiG_RG
+    ZiGT <|-- ZiG_KB
+    ZiGT <|-- ZiG_UB
+    ZiGT <|-- ZiG_SF
+    ZiGT <|-- ZiG_PC
+    ZiGT <|-- ZiG_MG
+    ZiGT <|-- ZiG_SH
+    ZiGT <|-- ZiG_CD
+    ZiGT <|-- ZiG_KU
+    ZiGT <|-- ZiG_KD
 
+    ZiGOracleHub ..|> IChainlinkAggregator : interacts with
+    FeedRegistry --> ZiGOracleHub
+    BandFeedRegistry --> ZiGOracleHub
+    LiveBandFeed --> ZiGOracleHub
+    ZiGOracleHub --> ZiGT
+
+    ReparationsModel --> ZiGOracleHub : uses (via IOracleRouter)
     ReparationsModel *-- RedistributionVault : uses
     ReparationsModel *-- AccessVerifier : uses
     ReparationsModel ..|> IReparationsDAO : uses
@@ -151,6 +186,17 @@ classDiagram
     ReparationsModel --|> EthicalGuard : extends
 
     EthicalGuard ..> RedistributionVault : uses
+
+    RedistributionVault --> ZiG_RG : distributes
+    RedistributionVault --> ZiG_KB : distributes
+    RedistributionVault --> ZiG_UB : distributes
+    RedistributionVault --> ZiG_SF : distributes
+    RedistributionVault --> ZiG_PC : distributes
+    RedistributionVault --> ZiG_MG : distributes
+    RedistributionVault --> ZiG_SH : distributes
+    RedistributionVault --> ZiG_CD : distributes
+    RedistributionVault --> ZiG_KU : distributes
+    RedistributionVault --> ZiG_KD : distributes
 
     ZiGMemeToken --|> ERC20
     ZiGMemeToken --|> Ownable
@@ -160,6 +206,11 @@ classDiagram
     ZiGGovernanceToken --|> ERC20PermitUpgradeable
     ZiGGovernanceToken --|> OwnableUpgradeable
     ZiGGovernanceToken --|> UUPSUpgradeable
+
+    ZiGGovernanceToken --> ZiGGovernance : votingPower
+    ZiGGovernance --> ReparationsDAO : controls
+    ZiGSoulboundToken --> ZiGGovernance : identity
+    SoulReparationNFT --> ReparationsDAO : eligibility
 
     ZiGRWAToken --|> ERC20
     ZiGRWAToken --|> Ownable

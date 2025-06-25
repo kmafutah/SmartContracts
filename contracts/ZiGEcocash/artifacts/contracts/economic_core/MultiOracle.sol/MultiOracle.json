@@ -1,0 +1,211 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "MultiOracle",
+  "sourceName": "contracts/economic_core/MultiOracle.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "string",
+          "name": "pair",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "price",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "decimals",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "PriceUpdated",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "pair",
+          "type": "string"
+        }
+      ],
+      "name": "getDecimals",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "pair",
+          "type": "string"
+        }
+      ],
+      "name": "getLatestPrice",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "pair",
+          "type": "string"
+        }
+      ],
+      "name": "getUpdatedAt",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "pair",
+          "type": "string"
+        }
+      ],
+      "name": "latestAnswer",
+      "outputs": [
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "pair",
+          "type": "string"
+        }
+      ],
+      "name": "latestRoundData",
+      "outputs": [
+        {
+          "internalType": "uint80",
+          "name": "roundId",
+          "type": "uint80"
+        },
+        {
+          "internalType": "int256",
+          "name": "answer",
+          "type": "int256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "startedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "updatedAt_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint80",
+          "name": "answeredInRound",
+          "type": "uint80"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "pair",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "price",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint8",
+          "name": "_decimals",
+          "type": "uint8"
+        }
+      ],
+      "name": "setPrice",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x60808060405234602757600180546001600160a01b03191633179055610551908161002d8239f35b600080fdfe6080604052600436101561001257600080fd5b60003560e01c80631d49a8df146103c55780632e23cee1146102aa57806333f98c771461021b5780638da5cb5b146101e7578063afd0fd1d14610191578063c6fdb95d14610074578063f2fde38b146100c95763f66a1b711461007457600080fd5b346100c45760203660031901126100c45760043567ffffffffffffffff81116100c4576100a5903690600401610467565b6020815191012060005260006020526020604060002054604051908152f35b600080fd5b346100c45760203660031901126100c45760043573ffffffffffffffffffffffffffffffffffffffff81168091036100c45760015461011f73ffffffffffffffffffffffffffffffffffffffff821633146104d0565b811561014d577fffffffffffffffffffffffff00000000000000000000000000000000000000001617600155005b606460405162461bcd60e51b815260206004820152601960248201527f4d756c74694f7261636c653a207a65726f2061646472657373000000000000006044820152fd5b346100c45760203660031901126100c45760043567ffffffffffffffff81116100c4576101c2903690600401610467565b602081519101206000526000602052602060ff60016040600020015416604051908152f35b346100c45760003660031901126100c457602073ffffffffffffffffffffffffffffffffffffffff60015416604051908152f35b346100c45760203660031901126100c45760043567ffffffffffffffff81116100c45761024c903690600401610467565b60208151910120600052600060205260a06040600020604061026c610418565b600283549384835260ff6001820154166020840152015491829101526040519160008352602083015260006040830152606082015260006080820152f35b346100c45760603660031901126100c45760043567ffffffffffffffff81116100c4576102db903690600401610467565b6024356044359160ff83168093036100c45761031073ffffffffffffffffffffffffffffffffffffffff6001541633146104d0565b805160208201206002610321610418565b91848352602083018681526040840191428352600052600060205260406000209351845560ff6001850191511660ff19825416179055519101556040519080519060005b8281106103b257857f4fb8d924c6f301bae3dd7b4f22e4b2bff162ef419e21c53676b642ff0b549667606087878088810160008152039020936040519182526020820152426040820152a2005b8060208092840101518186015201610365565b346100c45760203660031901126100c45760043567ffffffffffffffff81116100c4576103f6903690600401610467565b6020815191012060005260006020526020600260406000200154604051908152f35b604051906060820182811067ffffffffffffffff82111761043857604052565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052604160045260246000fd5b81601f820112156100c45780359067ffffffffffffffff82116104385760405192601f8301601f19908116603f0116840167ffffffffffffffff81118582101761043857604052828452602083830101116100c457816000926020809301838601378301015290565b156104d757565b606460405162461bcd60e51b815260206004820152601660248201527f4d756c74694f7261636c653a206e6f74206f776e6572000000000000000000006044820152fdfea2646970667358221220f0da39aade48224dd7ea2fa91f47b6cf0b8f734c01d42ac708cbc903b3bc4c1b64736f6c634300081d0033",
+  "deployedBytecode": "0x6080604052600436101561001257600080fd5b60003560e01c80631d49a8df146103c55780632e23cee1146102aa57806333f98c771461021b5780638da5cb5b146101e7578063afd0fd1d14610191578063c6fdb95d14610074578063f2fde38b146100c95763f66a1b711461007457600080fd5b346100c45760203660031901126100c45760043567ffffffffffffffff81116100c4576100a5903690600401610467565b6020815191012060005260006020526020604060002054604051908152f35b600080fd5b346100c45760203660031901126100c45760043573ffffffffffffffffffffffffffffffffffffffff81168091036100c45760015461011f73ffffffffffffffffffffffffffffffffffffffff821633146104d0565b811561014d577fffffffffffffffffffffffff00000000000000000000000000000000000000001617600155005b606460405162461bcd60e51b815260206004820152601960248201527f4d756c74694f7261636c653a207a65726f2061646472657373000000000000006044820152fd5b346100c45760203660031901126100c45760043567ffffffffffffffff81116100c4576101c2903690600401610467565b602081519101206000526000602052602060ff60016040600020015416604051908152f35b346100c45760003660031901126100c457602073ffffffffffffffffffffffffffffffffffffffff60015416604051908152f35b346100c45760203660031901126100c45760043567ffffffffffffffff81116100c45761024c903690600401610467565b60208151910120600052600060205260a06040600020604061026c610418565b600283549384835260ff6001820154166020840152015491829101526040519160008352602083015260006040830152606082015260006080820152f35b346100c45760603660031901126100c45760043567ffffffffffffffff81116100c4576102db903690600401610467565b6024356044359160ff83168093036100c45761031073ffffffffffffffffffffffffffffffffffffffff6001541633146104d0565b805160208201206002610321610418565b91848352602083018681526040840191428352600052600060205260406000209351845560ff6001850191511660ff19825416179055519101556040519080519060005b8281106103b257857f4fb8d924c6f301bae3dd7b4f22e4b2bff162ef419e21c53676b642ff0b549667606087878088810160008152039020936040519182526020820152426040820152a2005b8060208092840101518186015201610365565b346100c45760203660031901126100c45760043567ffffffffffffffff81116100c4576103f6903690600401610467565b6020815191012060005260006020526020600260406000200154604051908152f35b604051906060820182811067ffffffffffffffff82111761043857604052565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052604160045260246000fd5b81601f820112156100c45780359067ffffffffffffffff82116104385760405192601f8301601f19908116603f0116840167ffffffffffffffff81118582101761043857604052828452602083830101116100c457816000926020809301838601378301015290565b156104d757565b606460405162461bcd60e51b815260206004820152601660248201527f4d756c74694f7261636c653a206e6f74206f776e6572000000000000000000006044820152fdfea2646970667358221220f0da39aade48224dd7ea2fa91f47b6cf0b8f734c01d42ac708cbc903b3bc4c1b64736f6c634300081d0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

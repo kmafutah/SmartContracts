@@ -125,10 +125,10 @@ async function deployToNetwork(networkKey) {
     }
     
     console.log(`👤 Deployer: ${deployer.address}`);
-    const balance = await deployer.getBalance();
+    const balance = await ethers.provider.getBalance(deployer.address);
     console.log(`💰 Balance: ${ethers.formatEther(balance)} ETH`);
     
-    if (balance.isZero()) {
+    if (balance === 0n) {
       console.log("⚠️  Warning: Deployer has zero balance!");
       console.log("   For zero-gas networks (SKALE, IOTA), this is OK.");
       console.log("   For other networks, you need ETH for gas fees.");

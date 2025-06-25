@@ -1,0 +1,96 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "MockUniswapV3Router",
+  "sourceName": "contracts/mocks/MockUniswapV3Router.sol",
+  "abi": [
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "tokenIn",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "tokenOut",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amountIn",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amountOut",
+          "type": "uint256"
+        }
+      ],
+      "name": "Swap",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "tokenIn",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "tokenOut",
+          "type": "address"
+        },
+        {
+          "internalType": "uint24",
+          "name": "fee",
+          "type": "uint24"
+        },
+        {
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "deadline",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amountIn",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amountOutMinimum",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint160",
+          "name": "sqrtPriceLimitX96",
+          "type": "uint160"
+        }
+      ],
+      "name": "exactInputSingle",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "amountOut",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x60808060405234601557610229908161001b8239f35b600080fdfe608080604052600436101561001357600080fd5b60003560e01c6341060ae01461002857600080fd5b346101cb576101003660031901126101cb576004359073ffffffffffffffffffffffffffffffffffffffff82168092036101cb5760243573ffffffffffffffffffffffffffffffffffffffff81168091036101cb5760443562ffffff8116036101cb576100936101d0565b5060a4359160e43573ffffffffffffffffffffffffffffffffffffffff8116036101cb57608435421161018957508115610145576103e58202928284046103e503610116577ffa2dda1cc1b86e41239702756b13effbc1a092b5c57e3ad320fbe4f3b13fe23560406103e8602096049481519081528587820152a3604051908152f35b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b606460405162461bcd60e51b815260206004820152600e60248201527f496e76616c696420616d6f756e740000000000000000000000000000000000006044820152fd5b8062461bcd60e51b6064925260206004820152601360248201527f5472616e73616374696f6e2065787069726564000000000000000000000000006044820152fd5b600080fd5b6064359073ffffffffffffffffffffffffffffffffffffffff821682036101cb5756fea2646970667358221220bb17f94df636befdbbdaebfed7d6f2e999b2bef9f1cfadf88addf14cae763c7864736f6c634300081d0033",
+  "deployedBytecode": "0x608080604052600436101561001357600080fd5b60003560e01c6341060ae01461002857600080fd5b346101cb576101003660031901126101cb576004359073ffffffffffffffffffffffffffffffffffffffff82168092036101cb5760243573ffffffffffffffffffffffffffffffffffffffff81168091036101cb5760443562ffffff8116036101cb576100936101d0565b5060a4359160e43573ffffffffffffffffffffffffffffffffffffffff8116036101cb57608435421161018957508115610145576103e58202928284046103e503610116577ffa2dda1cc1b86e41239702756b13effbc1a092b5c57e3ad320fbe4f3b13fe23560406103e8602096049481519081528587820152a3604051908152f35b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b606460405162461bcd60e51b815260206004820152600e60248201527f496e76616c696420616d6f756e740000000000000000000000000000000000006044820152fd5b8062461bcd60e51b6064925260206004820152601360248201527f5472616e73616374696f6e2065787069726564000000000000000000000000006044820152fd5b600080fd5b6064359073ffffffffffffffffffffffffffffffffffffffff821682036101cb5756fea2646970667358221220bb17f94df636befdbbdaebfed7d6f2e999b2bef9f1cfadf88addf14cae763c7864736f6c634300081d0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

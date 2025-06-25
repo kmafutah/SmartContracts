@@ -9,7 +9,7 @@ async function main() {
   console.log("Interacting with contracts using account:", deployer.address);
 
   // Load deployment addresses
-  const deploymentPath = path.join(__dirname, "../deployment-addresses.json");
+  const deploymentPath = path.join(__dirname, "../deployment-addresses-polygon_zkevm.json");
   if (!fs.existsSync(deploymentPath)) {
     console.error("❌ No deployment addresses found. Run deployment first.");
     return;

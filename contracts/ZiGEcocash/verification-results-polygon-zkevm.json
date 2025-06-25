@@ -1,0 +1,37 @@
+{
+  "timestamp": "2025-06-23T01:49:20.321Z",
+  "network": "polygon_zkevm",
+  "summary": {
+    "total": 17,
+    "successful": 16,
+    "skipped": 0,
+    "failed": 1
+  },
+  "results": {
+    "successful": [
+      "ZiGOracleHub",
+      "ZiG",
+      "Vault",
+      "ZiGT",
+      "ZiGWallet",
+      "ZiGSoulboundToken",
+      "AccessVerifier",
+      "EthicalGuard",
+      "ReparationsDAO",
+      "ZiGGovernanceToken",
+      "SoulReparationNFT",
+      "ZiGNFT",
+      "ZiGUtilityToken",
+      "ZiGMemeToken",
+      "ZiGGameFiToken",
+      "ZiGBondingCurve"
+    ],
+    "skipped": [],
+    "failed": [
+      {
+        "name": "ZiGRWAToken",
+        "error": "Command failed: npx hardhat verify --network polygon_zkevm 0x97bcfdB1f7530a3C9fc8ab00C9739e4025aC85dc \n[WARNING] Network and explorer-specific api keys are deprecated in favour of the new Etherscan v2 api. Support for v1 is expected to end by May 31st, 2025. To migrate, please specify a single Etherscan.io api key the apiKey config value.\nhardhat-verify found one or more errors during the verification process:\n\nSourcify:\nA network request failed. This is an error from the block explorer, not Hardhat. Error: Unexpected token S in JSON at position 0\n\n\n"
+      }
+    ]
+  }
+}

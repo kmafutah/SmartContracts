@@ -1,4 +1,13 @@
 // SubZiGTController.sol
+// SPDX-License-Identifier: UNLICENSED
+
+pragma solidity ^0.8.29;
+import "./MutapaReserveBacking.sol";
+interface IZiGT {
+    function mint(address to, uint256 amount) external;
+    function burn(address from, uint256 amount) external;
+}
+
 contract SubZiGTController {
     address public governance;
     address public mutapaBacking;
