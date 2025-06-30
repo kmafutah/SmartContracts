@@ -1,0 +1,17 @@
+{
+  "name": "ZiG Stablecoin",
+  "symbol": "ZiG",
+  "decimals": 18,
+  "description": "ZiG is a Pan-African gold-backed token designed to facilitate cross-border payments, reparations, and economic empowerment within the African diaspora.",
+  "website": "https://zig.africa/stablecoin/zig",
+  "image": "ipfs://YOUR_IMAGE_CID_HERE",
+  "explorer": "https://zkevm.polygonscan.com/token/0x9d485613b48f6617E90B4Dfe664Bf52127572BBa",
+  "status": "active",
+  "id": "zig-token",
+  "links": {
+    "twitter": "https://twitter.com/ZiG",
+    "github": "https://github.com/ZiG",
+    "discord": "https://discord.com/invite/ZiG",
+    "telegram": "https://t.me/ZiG"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "/_app": "pages/_app.js",
+  "/dao": "pages/dao.js",
+  "/dashboard": "pages/dashboard.js",
+  "/identity": "pages/identity.js",
+  "/": "pages/index.js",
+  "/nfts": "pages/nfts.js",
+  "/oracles": "pages/oracles.js",
+  "/tokens": "pages/tokens.js",
+  "/vault": "pages/vault.js",
+  "/_error": "pages/_error.js",
+  "/_document": "pages/_document.js"
+}

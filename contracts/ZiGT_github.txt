@@ -576,6 +576,38 @@ contract ZiGNFT is ERC721URIStorage, Ownable {
 }
 ---File Content End---
 
+---Path and files name: ZiGT_github/TestBondingCurve.sol
+---Filename: TestBondingCurve.sol
+---File Content Start---
+// // SPDX-License-Identifier: UNLICENSED
+// pragma solidity ^0.8.24;
+
+// import "./ZiGBondingCurve.sol";
+
+// contract TestBondingCurve is ZiGBondingCurve {
+//     address public dao;
+
+//     modifier onlyDAO() {
+//         require(msg.sender == dao, "Only DAO can call");
+//         _;
+//     }
+
+//     function initialize(address _dao) public override initializer {
+//         __ZiGBondingCurve_init();
+//         dao = _dao;
+//         __governance = _dao;
+//     }
+
+//     function mint(uint256 amount) external payable override onlyDAO {
+//         return ZiGBondingCurve.mint(amount);
+//     }
+
+//     function burn(uint256 amount) external override onlyDAO {
+//         return ZiGBondingCurve.burn(amount);
+//     }
+// }
+---File Content End---
+
 ---Path and files name: ZiGT_github/ZiGT.sol
 ---Filename: ZiGT.sol
 ---File Content Start---
@@ -2381,16 +2413,25 @@ contract ZiGGovernance is ERC20Votes, CCIPReceiver {
     uint256 public constant MIN_PROPOSAL_THRESHOLD = 1000e18;
     uint256 public constant VOTING_PERIOD = 3 days;
 
+    address public reserve;
+    address public bondingCurve;
+    address public dao;
+
+    modifier onlyDAO() {
+        require(msg.sender == dao, "Only DAO can call");
+        _;
+    }
+
     event ProposalCreated(uint256 indexed proposalId);
     event VoteCast(address indexed voter, uint256 proposalId, bool support);
     event ProposalExecuted(uint256 indexed proposalId);
     event MessageReceived(address indexed sender, bytes data);
 
-    constructor(address router, string memory name, string memory symbol, string memory version) 
+    constructor(address router, string memory name, string memory symbol, string memory version, address _dao) 
         ERC20(name, symbol) 
         EIP712(name, version) 
         CCIPReceiver(router) {
-        // Constructor logic if needed
+        dao = _dao;
     }
 
     function _ccipReceive(Client.Any2EVMMessage memory message) internal override {
@@ -2452,6 +2493,21 @@ contract ZiGGovernance is ERC20Votes, CCIPReceiver {
         emit ProposalExecuted(proposalId);
     }
 
+    function mint(address to, uint256 amount) external onlyDAO {
+        _mint(to, amount);
+    }
+
+    function burn(address from, uint256 amount) external onlyDAO {
+        _burn(from, amount);
+    }
+
+    function setReserve(address _reserve) external onlyDAO {
+        reserve = _reserve;
+    }
+    function setBondingCurve(address _curve) external onlyDAO {
+        bondingCurve = _curve;
+    }
+
     /// @notice Returns all proposals
     function getProposals() public view returns (Proposal[] memory) {
         Proposal[] memory allProposals = new Proposal[](proposalCount);
@@ -2460,6 +2516,96 @@ contract ZiGGovernance is ERC20Votes, CCIPReceiver {
         }
         return allProposals;
     }
+}
+---File Content End---
+
+---Path and files name: ZiGT_github/Reserve.sol
+---Filename: Reserve.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.24;
+
+/**
+ * @title Reserve
+ * @dev Holds tokenized real-world assets (e.g., gold) and allows only the DAO to manage reserves.
+ *      Includes stubs for oracle and ZK-proof verification.
+ */
+contract Reserve {
+    // Mapping of asset type to amount (e.g., "GOLD" => 1000)
+    mapping(bytes32 => uint256) public reserves;
+    address public dao;
+
+    event ReserveUpdated(bytes32 indexed asset, uint256 amount, string proofType, bytes proof);
+
+    modifier onlyDAO() {
+        require(msg.sender == dao, "Only DAO can call");
+        _;
+    }
+
+    constructor(address _dao) {
+        dao = _dao;
+    }
+
+    // Called by DAO to update reserves (mint/burn/withdraw)
+    function updateReserve(bytes32 asset, uint256 amount, string calldata proofType, bytes calldata proof) external onlyDAO {
+        // Optionally verify proofType ("oracle", "zk-proof", etc.)
+        // For now, just emit event for transparency
+        reserves[asset] = amount;
+        emit ReserveUpdated(asset, amount, proofType, proof);
+    }
+
+    // Example: get reserve for asset
+    function getReserve(bytes32 asset) external view returns (uint256) {
+        return reserves[asset];
+    }
+}
+---File Content End---
+
+---Path and files name: ZiGT_github/MutapaCustodianDAOv2.sol
+---Filename: MutapaCustodianDAOv2.sol
+---File Content Start---
+// MutapaCustodianDAO.sol
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+contract MutapaCustodianDAOv2 {
+    address[] public committee;
+    mapping(address => bool) public isMember;
+
+    event MemberAdded(address indexed member);
+    event MemberRemoved(address indexed member);
+    event Approved(string action);
+
+    modifier onlyCommittee() {
+        require(isMember[msg.sender], "Not committee");
+        _;
+    }
+
+    constructor(address[] memory members) {
+        for (uint i = 0; i < members.length; i++) {
+            isMember[members[i]] = true;
+            committee.push(members[i]);
+        }
+    }
+
+    function approveMint(address controller, address to, uint256 amount) external onlyCommittee {
+        SubZiGTController(controller).mintSubZiGT(to, amount);
+        emit Approved("mint");
+    }
+
+    function addMember(address member) external onlyCommittee {
+        isMember[member] = true;
+        committee.push(member);
+        emit MemberAdded(member);
+    }
+
+    function removeMember(address member) external onlyCommittee {
+        isMember[member] = false;
+        emit MemberRemoved(member);
+    }
+}
+
+interface SubZiGTController {
+    function mintSubZiGT(address to, uint256 amount) external;
 }
 ---File Content End---
 
@@ -2835,6 +2981,35 @@ contract ZiGUtilityToken is ERC20, Ownable {
     // function _msgData() internal view override(Context, ERC2771Context) returns (bytes calldata) {
     //     return ERC2771Context._msgData();
     // }
+}
+---File Content End---
+
+---Path and files name: ZiGT_github/BondingCurveManager.sol
+---Filename: BondingCurveManager.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import {ZiGBondingCurve} from "./ZiGBondingCurve.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
+// This file is deprecated. All BondingCurve management is now handled by the DAO (ZiGGovernance).
+// Do not use this file in production or tests.
+
+contract BondingCurveManager is Ownable {
+    ZiGBondingCurve public curve;
+
+    constructor(address _curve, address initialOwner) Ownable(initialOwner) {
+        curve = ZiGBondingCurve(_curve);
+    }
+
+    function mintOnCurve(uint256 amount) external payable onlyOwner {
+        curve.mint{value: msg.value}(amount);
+    }
+
+    function burnOnCurve(uint256 amount) external onlyOwner {
+        curve.burn(amount);
+    }
 }
 ---File Content End---
 

@@ -1,4 +1,4 @@
----Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/AccessVerifier.sol
+---Path and files name: ZiGEcocash/contracts/governance_identity_soulbound_statehood/AccessVerifier.sol
 ---Filename: AccessVerifier.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -65,7 +65,7 @@ contract AccessVerifier is Ownable {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ZiGNFT.sol
+---Path and files name: ZiGEcocash/contracts/governance_identity_soulbound_statehood/ZiGNFT.sol
 ---Filename: ZiGNFT.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -76,76 +76,165 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title ZiG NFT
- * @dev Collectible NFTs for the ZiG ecosystem
+ * @dev Collectible NFTs for the ZiG ecosystem with enhanced image support
  */
 contract ZiGNFT is ERC721, Ownable {
     
     struct NFTData {
         string metadataURI;
+        string imageURI;        // Direct image URL
+        string name;            // NFT name
+        string description;     // NFT description
+        string[] attributes;    // Array of attributes
         uint256 rarity;
         uint256 mintDate;
         bool isLimited;
+        string category;        // Category like "Cultural", "Economic", "Governance"
     }
     
     mapping(uint256 => NFTData) public nftData;
+    mapping(string => uint256) public categoryCounts;
     uint256 private _tokenIdCounter;
     
-    event NFTMinted(address indexed to, uint256 indexed tokenId, uint256 rarity, bool isLimited);
+    // Predefined categories for ZiG ecosystem
+    string[] public categories = ["Cultural", "Economic", "Governance", "GameFi", "Utility"];
+    
+    event NFTMinted(
+        address indexed to, 
+        uint256 indexed tokenId, 
+        string name,
+        string category,
+        uint256 rarity, 
+        bool isLimited
+    );
+    
+    event ImageUpdated(uint256 indexed tokenId, string newImageURI);
     
     constructor() ERC721("ZiG Collectible NFT", "ZiGNFT") Ownable(msg.sender) {}
     
-function _mintNFT(
-    address _to,
-    string memory _metadataURI,
-    uint256 _rarity,
-    bool _isLimited
-) internal returns (uint256) {
-    require(_to != address(0), "ZiGNFT: Cannot mint to zero address");
-    require(bytes(_metadataURI).length > 0, "ZiGNFT: Empty metadata URI");
-    require(_rarity > 0, "ZiGNFT: Rarity must be greater than 0");
+    function _mintNFT(
+        address _to,
+        string memory _metadataURI,
+        string memory _imageURI,
+        string memory _name,
+        string memory _description,
+        string[] memory _attributes,
+        uint256 _rarity,
+        bool _isLimited,
+        string memory _category
+    ) internal returns (uint256) {
+        require(_to != address(0), "ZiGNFT: Cannot mint to zero address");
+        require(bytes(_metadataURI).length > 0, "ZiGNFT: Empty metadata URI");
+        require(bytes(_imageURI).length > 0, "ZiGNFT: Image URI required");
+        require(bytes(_name).length > 0, "ZiGNFT: Name required");
+        require(_rarity > 0, "ZiGNFT: Rarity must be greater than 0");
+        require(bytes(_category).length > 0, "ZiGNFT: Category required");
 
-    _tokenIdCounter++;
-    uint256 tokenId = _tokenIdCounter;
+        _tokenIdCounter++;
+        uint256 tokenId = _tokenIdCounter;
 
-    _safeMint(_to, tokenId);
+        _safeMint(_to, tokenId);
 
-    nftData[tokenId] = NFTData({
-        metadataURI: _metadataURI,
-        rarity: _rarity,
-        mintDate: block.timestamp,
-        isLimited: _isLimited
-    });
+        nftData[tokenId] = NFTData({
+            metadataURI: _metadataURI,
+            imageURI: _imageURI,
+            name: _name,
+            description: _description,
+            attributes: _attributes,
+            rarity: _rarity,
+            mintDate: block.timestamp,
+            isLimited: _isLimited,
+            category: _category
+        });
 
-    emit NFTMinted(_to, tokenId, _rarity, _isLimited);
+        categoryCounts[_category]++;
 
-    return tokenId;
-}
+        emit NFTMinted(_to, tokenId, _name, _category, _rarity, _isLimited);
 
-function nftmint(
-    address _to,
-    string memory _metadataURI,
-    uint256 _rarity,
-    bool _isLimited
-) external onlyOwner returns (uint256) {
-    return _mintNFT(_to, _metadataURI, _rarity, _isLimited);
-}
-
-function batchMint(
-    address[] memory _recipients,
-    string[] memory _metadataURIs,
-    uint256[] memory _rarities,
-    bool[] memory _isLimited
-) external onlyOwner {
-    require(_recipients.length == _metadataURIs.length, "ZiGNFT: Arrays length mismatch");
-    require(_recipients.length == _rarities.length, "ZiGNFT: Arrays length mismatch");
-    require(_recipients.length == _isLimited.length, "ZiGNFT: Arrays length mismatch");
-    require(_recipients.length > 0, "ZiGNFT: Empty arrays");
-
-    for (uint256 i = 0; i < _recipients.length; i++) {
-        _mintNFT(_recipients[i], _metadataURIs[i], _rarities[i], _isLimited[i]);
+        return tokenId;
     }
-}
 
+    function nftmint(
+        address _to,
+        string memory _metadataURI,
+        string memory _imageURI,
+        string memory _name,
+        string memory _description,
+        string[] memory _attributes,
+        uint256 _rarity,
+        bool _isLimited,
+        string memory _category
+    ) external onlyOwner returns (uint256) {
+        return _mintNFT(_to, _metadataURI, _imageURI, _name, _description, _attributes, _rarity, _isLimited, _category);
+    }
+
+    // Simplified mint function for backward compatibility
+    function nftmint(
+        address _to,
+        string memory _metadataURI,
+        uint256 _rarity,
+        bool _isLimited
+    ) external onlyOwner returns (uint256) {
+        string[] memory defaultAttributes = new string[](0);
+        return _mintNFT(_to, _metadataURI, _metadataURI, "ZiG NFT", "A collectible NFT from the ZiG ecosystem", defaultAttributes, _rarity, _isLimited, "Cultural");
+    }
+
+    function batchMint(
+        address[] memory _recipients,
+        string[] memory _metadataURIs,
+        string[] memory _imageURIs,
+        string[] memory _names,
+        string[] memory _descriptions,
+        string[][] memory _attributes,
+        uint256[] memory _rarities,
+        bool[] memory _isLimited,
+        string[] memory _categories
+    ) external onlyOwner {
+        require(_recipients.length == _metadataURIs.length, "ZiGNFT: Arrays length mismatch");
+        require(_recipients.length == _imageURIs.length, "ZiGNFT: Arrays length mismatch");
+        require(_recipients.length == _names.length, "ZiGNFT: Arrays length mismatch");
+        require(_recipients.length == _descriptions.length, "ZiGNFT: Arrays length mismatch");
+        require(_recipients.length == _attributes.length, "ZiGNFT: Arrays length mismatch");
+        require(_recipients.length == _rarities.length, "ZiGNFT: Arrays length mismatch");
+        require(_recipients.length == _isLimited.length, "ZiGNFT: Arrays length mismatch");
+        require(_recipients.length == _categories.length, "ZiGNFT: Arrays length mismatch");
+        require(_recipients.length > 0, "ZiGNFT: Empty arrays");
+
+        for (uint256 i = 0; i < _recipients.length; i++) {
+            _mintNFT(_recipients[i], _metadataURIs[i], _imageURIs[i], _names[i], _descriptions[i], _attributes[i], _rarities[i], _isLimited[i], _categories[i]);
+        }
+    }
+
+    // Update image URI for an existing NFT
+    function updateImageURI(uint256 tokenId, string memory _newImageURI) external onlyOwner {
+        require(_ownerOf(tokenId) != address(0), "ZiGNFT: Token does not exist");
+        require(bytes(_newImageURI).length > 0, "ZiGNFT: Empty image URI");
+        
+        nftData[tokenId].imageURI = _newImageURI;
+        emit ImageUpdated(tokenId, _newImageURI);
+    }
+
+    // Get image URI directly
+    function getImageURI(uint256 tokenId) external view returns (string memory) {
+        require(_ownerOf(tokenId) != address(0), "ZiGNFT: Token does not exist");
+        return nftData[tokenId].imageURI;
+    }
+
+    // Get NFT by category
+    function getNFTsByCategory(string memory _category) external view returns (uint256[] memory) {
+        uint256[] memory result = new uint256[](categoryCounts[_category]);
+        uint256 index = 0;
+        
+        for (uint256 tokenId = 1; tokenId <= _tokenIdCounter; tokenId++) {
+            if (_ownerOf(tokenId) != address(0) && 
+                keccak256(bytes(nftData[tokenId].category)) == keccak256(bytes(_category))) {
+                result[index] = tokenId;
+                index++;
+            }
+        }
+        
+        return result;
+    }
     
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
         require(_ownerOf(tokenId) != address(0), "ZiGNFT: URI query for nonexistent token");
@@ -184,9 +273,19 @@ function batchMint(
         
         return result;
     }
+
+    // Get all available categories
+    function getCategories() external view returns (string[] memory) {
+        return categories;
+    }
+
+    // Get count of NFTs in a category
+    function getCategoryCount(string memory _category) external view returns (uint256) {
+        return categoryCounts[_category];
+    }
 }---File Content End---
 
----Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ZiGGovernanceToken.sol
+---Path and files name: ZiGEcocash/contracts/governance_identity_soulbound_statehood/ZiGGovernanceToken.sol
 ---Filename: ZiGGovernanceToken.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -338,7 +437,7 @@ contract ZiGGovernanceToken is ERC20, Ownable, ReentrancyGuard {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/EthicalGuard.sol
+---Path and files name: ZiGEcocash/contracts/governance_identity_soulbound_statehood/EthicalGuard.sol
 ---Filename: EthicalGuard.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -406,7 +505,7 @@ contract EthicalGuard is Ownable {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ZiGRWAToken.sol
+---Path and files name: ZiGEcocash/contracts/governance_identity_soulbound_statehood/ZiGRWAToken.sol
 ---Filename: ZiGRWAToken.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -425,7 +524,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
  * @title ZiG RWA Token
  * @dev Real World Asset tokenization for the ZiG ecosystem
  */
-abstract contract ZiGRWAToken is ERC721, Ownable {
+contract ZiGRWAToken is ERC721, Ownable {
     using Math for uint256;
     
     struct RWAData {
@@ -443,7 +542,7 @@ abstract contract ZiGRWAToken is ERC721, Ownable {
     
     event RWATokenized(uint256 indexed tokenId, string assetType, uint256 valuation);
     
-    constructor() ERC721("ZiG Real World Asset", "ZiGRWA") {
+    constructor() ERC721("ZiG Real World Asset", "ZiGRWA") Ownable(msg.sender) {
         verifiers[msg.sender] = true;
     }
     
@@ -480,7 +579,7 @@ abstract contract ZiGRWAToken is ERC721, Ownable {
 }
 ---File Content End---
 
----Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ReparationsDAO.sol
+---Path and files name: ZiGEcocash/contracts/governance_identity_soulbound_statehood/ReparationsDAO.sol
 ---Filename: ReparationsDAO.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -493,7 +592,16 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
-import "../cultural_utilty_layer/SoulReparationNFT.sol";
+
+// Interface for SoulReparationNFT to avoid relative imports
+interface ISoulReparationNFT {
+    function claimReparation(
+        address recipient,
+        string memory title,
+        uint256 amount,
+        string memory description
+    ) external;
+}
 
 /**
  * @title Reparations DAO
@@ -604,7 +712,7 @@ contract ReparationsDAO is Ownable {
         
         proposal.executed = true;
         
-        SoulReparationNFT(reparationNFT).claimReparation(
+        ISoulReparationNFT(reparationNFT).claimReparation(
             proposal.recipient,
             "DAO Approved Reparation",
             proposal.amount,
@@ -623,7 +731,7 @@ contract ReparationsDAO is Ownable {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ZiGUtilityToken.sol
+---Path and files name: ZiGEcocash/contracts/governance_identity_soulbound_statehood/ZiGUtilityToken.sol
 ---Filename: ZiGUtilityToken.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -641,7 +749,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
  * @title ZiG Utility Token
  * @dev Multi-purpose utility token for ecosystem services
  */
-abstract contract ZiGUtilityToken is ERC1155, Ownable {
+contract ZiGUtilityToken is ERC1155, Ownable {
     using Math for uint256;
     
     mapping(uint256 => string) public tokenURIs;
@@ -654,7 +762,7 @@ abstract contract ZiGUtilityToken is ERC1155, Ownable {
     uint256 public constant GOVERNANCE_BONUS_TOKEN = 3;
     uint256 public constant CULTURAL_ACCESS_TOKEN = 4;
     
-    constructor() ERC1155("") {
+    constructor() ERC1155("") Ownable(msg.sender) {
         minters[msg.sender] = true;
     }
     
@@ -678,7 +786,7 @@ abstract contract ZiGUtilityToken is ERC1155, Ownable {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/governance_identity_soulbound_statehood/ZiGMemeToken.sol
+---Path and files name: ZiGEcocash/contracts/governance_identity_soulbound_statehood/ZiGMemeToken.sol
 ---Filename: ZiGMemeToken.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -696,7 +804,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
  * @title ZiG Meme Token
  * @dev Community-driven meme token for viral marketing
  */
-abstract contract ZiGMemeToken is ERC20, Ownable {
+contract ZiGMemeToken is ERC20, Ownable {
     using Math for uint256;
     
     uint256 public constant MAX_SUPPLY = 1000000000e18; // 1 billion
@@ -704,7 +812,7 @@ abstract contract ZiGMemeToken is ERC20, Ownable {
     
     event MemeCreated(address indexed creator, uint256 amount, string memeHash);
     
-    constructor() ERC20("ZiG Meme Token", "ZiGMEME") {
+    constructor() ERC20("ZiG Meme Token", "ZiGMeme") Ownable(msg.sender) {
         memeCreators[msg.sender] = true;
     }
     
@@ -723,7 +831,7 @@ abstract contract ZiGMemeToken is ERC20, Ownable {
 }
 ---File Content End---
 
----Path and files name: ZiGEcocash/gamefi_expansion/ZiGGameFiToken.sol
+---Path and files name: ZiGEcocash/contracts/gamefi_expansion/ZiGGameFiToken.sol
 ---Filename: ZiGGameFiToken.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -993,7 +1101,7 @@ contract ZiGGameFiToken is ERC20, ERC20Burnable, Ownable, ReentrancyGuard {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/gamefi_expansion/ZiGBondingCurve.sol
+---Path and files name: ZiGEcocash/contracts/gamefi_expansion/ZiGBondingCurve.sol
 ---Filename: ZiGBondingCurve.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -1275,7 +1383,7 @@ contract ZiGBondingCurve is Ownable, ReentrancyGuard {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/economic_core/ZiGOracleHub.sol
+---Path and files name: ZiGEcocash/contracts/economic_core/ZiGOracleHub.sol
 ---Filename: ZiGOracleHub.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -1865,7 +1973,7 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/economic_core/ZiG.sol
+---Path and files name: ZiGEcocash/contracts/economic_core/ZiG.sol
 ---Filename: ZiG.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -1991,7 +2099,107 @@ contract ZiG is ERC20, ERC20Burnable, Ownable, Pausable {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/economic_core/ZiGT.sol
+---Path and files name: ZiGEcocash/contracts/economic_core/ZiGOracle.sol
+---Filename: ZiGOracle.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+interface IZiGOracleHub {
+    function calculateZiGPrice() external view returns (uint256);
+}
+
+/**
+ * @title ZiG Oracle
+ * @dev Simple oracle that returns the calculated ZiG price from the OracleHub
+ */
+contract ZiGOracle is Ownable {
+    IZiGOracleHub public oracleHub;
+    
+    event OracleHubUpdated(address indexed newOracleHub);
+    
+    constructor(address _oracleHub) Ownable(msg.sender) {
+        require(_oracleHub != address(0), "Invalid oracle hub address");
+        oracleHub = IZiGOracleHub(_oracleHub);
+    }
+    
+    function setOracleHub(address _oracleHub) external onlyOwner {
+        require(_oracleHub != address(0), "Invalid oracle hub address");
+        oracleHub = IZiGOracleHub(_oracleHub);
+        emit OracleHubUpdated(_oracleHub);
+    }
+    
+    function getPrice(address token) external view returns (uint256) {
+        // This oracle only works for ZiG token
+        // For other tokens, return 0 to indicate no price available
+        return oracleHub.calculateZiGPrice();
+    }
+} ---File Content End---
+
+---Path and files name: ZiGEcocash/contracts/economic_core/FeedRegistry.sol
+---Filename: FeedRegistry.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+interface IChainlinkAggregator {
+    function latestAnswer() external view returns (int256);
+}
+
+contract FeedRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    mapping(bytes32 => address) public feeds;
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize() public initializer {
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
+    }
+
+    // --- ADMIN: Set a feed ---
+    function setFeed(bytes32 symbol, address feedAddress) public onlyOwner {
+        require(feedAddress != address(0), "Invalid feed address");
+        feeds[symbol] = feedAddress;
+    }
+
+    function setFeedForString(string memory symbol, address feedAddress) external onlyOwner {
+        bytes32 key = keccak256(bytes(symbol));
+        feeds[key] = feedAddress;
+    }
+
+    // --- Get a feed address ---
+    function getFeed(bytes32 symbol) external view returns (address) {
+        return feeds[symbol];
+    }
+
+    // --- Get latest rate from feed ---
+    function getRate(bytes32 symbol) public view returns (uint256) {
+        address feed = feeds[symbol];
+        require(feed != address(0), "Feed not set");
+
+        int256 answer = IChainlinkAggregator(feed).latestAnswer();
+        require(answer > 0, "Invalid feed rate");
+        return uint256(answer);
+    }
+
+    function getRateForString(string memory symbol) external view returns (uint256) {
+        return getRate(keccak256(bytes(symbol)));
+    }
+
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+}
+---File Content End---
+
+---Path and files name: ZiGEcocash/contracts/economic_core/ZiGT.sol
 ---Filename: ZiGT.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -2173,7 +2381,7 @@ contract ZiGT is ERC20, ERC20Burnable, Ownable, Pausable, ReentrancyGuard {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/economic_core/ZiGWallet.sol
+---Path and files name: ZiGEcocash/contracts/economic_core/ZiGWallet.sol
 ---Filename: ZiGWallet.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -2182,12 +2390,12 @@ pragma solidity ^0.8.29;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
+// import "@gnosis.pm/safe-contracts@1.3.0/contracts/GnosisSafe.sol";
 /**
  * @title ZiG Wallet
  * @dev Secure wallet that only accepts specific tokens
  */
-contract ZiGWallet is Ownable, ReentrancyGuard {
+contract ZiGWallet is /*GnosisSafe,*/ Ownable, ReentrancyGuard {
     
     mapping(address => bool) public allowedTokens;
     mapping(address => mapping(address => uint256)) public userBalances; // user => token => balance
@@ -2384,7 +2592,207 @@ contract ZiGWallet is Ownable, ReentrancyGuard {
     }
 }---File Content End---
 
----Path and files name: ZiGEcocash/economic_core/Vault.sol
+---Path and files name: ZiGEcocash/contracts/economic_core/CustomChainlinkOracle.sol
+---Filename: CustomChainlinkOracle.sol
+---File Content Start---
+// contracts/CustomChainlinkOracle.sol
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface IChainlinkAggregator {
+  function latestAnswer() external view returns (int256);
+  function decimals() external view returns (uint8);
+}
+
+contract CustomChainlinkOracle is IChainlinkAggregator {
+  int256 private price;
+  uint8 public decimals;
+  address public owner;
+
+  constructor(uint8 _decimals) {
+    decimals = _decimals;
+    owner = msg.sender;
+  }
+
+  function setPrice(int256 _price) external {
+    require(msg.sender == owner, "Not owner");
+    price = _price;
+  }
+
+  function latestAnswer() external view override returns (int256) {
+    return price;
+  }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/contracts/economic_core/LiveBandFeed.sol
+---Filename: LiveBandFeed.sol
+---File Content Start---
+// LiveBandFeed.sol
+// (No import "hardhat/console.sol"; or console.log lines here)
+
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+interface IBandStdReference {
+    function getReferenceData(string memory base, string memory quote) external view returns (
+        uint256 rate,
+        uint256 lastUpdatedBase,
+        uint256 lastUpdatedQuote
+    );
+}
+
+contract LiveBandFeed is IBandStdReference {
+    address public owner;
+    mapping(string => uint256) public prices;
+    mapping(string => uint256) public lastUpdated;
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    function setPrice(string memory pair, uint256 price) external onlyOwner {
+        prices[pair] = price;
+        lastUpdated[pair] = block.timestamp;
+    }
+
+    function getReferenceData(string memory base, string memory quote) external view returns (
+        uint256 rate,
+        uint256 lastUpdatedBase,
+        uint256 lastUpdatedQuote
+    ) {
+        string memory pair = string(abi.encodePacked(base, quote));
+
+        rate = prices[pair];
+        // Change the require to an if-revert with a specific message
+        if (rate == 0) { 
+            revert(string(abi.encodePacked("LiveBandFeed: Price is zero for pair: ", pair))); 
+        }
+
+        uint256 lastUpdate = lastUpdated[pair];
+        // Change the require to an if-revert with a specific message
+        if (lastUpdate == 0) { 
+            revert(string(abi.encodePacked("LiveBandFeed: Timestamp is zero for pair: ", pair)));
+        }
+
+        return (rate, lastUpdate, lastUpdate);
+    }
+
+    function setHighPrecisionPrice(string memory pair, uint256 price, uint8 decimals) external onlyOwner {
+        // Normalize to 18 decimals internally for downstream compatibility
+        require(decimals <= 30, "Too many decimals");
+        if (decimals > 18) {
+            uint256 factor = 10 ** (decimals - 18);
+            prices[pair] = price / factor;
+        } else {
+            uint256 factor = 10 ** (18 - decimals);
+            prices[pair] = price * factor;
+        }
+        lastUpdated[pair] = block.timestamp;
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/contracts/economic_core/MultiOracle.sol
+---Filename: MultiOracle.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/// @title MultiOracle - A centralized, timestamped, verifiable oracle
+/// @notice For use in cross-border token ecosystems, stablecoins, FX feeds, and experimentation.
+/// @dev Not decentralized; should be secured behind multisig or DAO-controlled governance.
+
+contract MultiOracle {
+    struct OracleData {
+        uint256 price;      // Price value with `decimals`
+        uint8 decimals;     // Number of decimals used (e.g., 18)
+        uint256 updatedAt;  // Last update timestamp
+    }
+
+    mapping(bytes32 => OracleData) internal data;
+    address public owner;
+
+    event PriceUpdated(
+        string indexed pair,
+        uint256 price,
+        uint8 decimals,
+        uint256 timestamp
+    );
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "MultiOracle: not owner");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    /// @notice Updates a price feed for a given pair
+    function setPrice(
+        string memory pair,
+        uint256 price,
+        uint8 _decimals
+    ) external onlyOwner {
+        bytes32 key = keccak256(bytes(pair));
+        data[key] = OracleData(price, _decimals, block.timestamp);
+        emit PriceUpdated(pair, price, _decimals, block.timestamp);
+    }
+
+    /// @notice Fetches latest price for a pair
+    function latestAnswer(string memory pair) external view returns (int256) {
+        bytes32 key = keccak256(bytes(pair));
+        return int256(data[key].price);
+    }
+
+    /// @notice Returns decimals used for the pair
+    function getDecimals(string memory pair) external view returns (uint8) {
+        bytes32 key = keccak256(bytes(pair));
+        return data[key].decimals;
+    }
+
+    /// @notice Returns last update timestamp for a pair
+    function getUpdatedAt(string memory pair) external view returns (uint256) {
+        bytes32 key = keccak256(bytes(pair));
+        return data[key].updatedAt;
+    }
+
+    /// @notice Chainlink-compatible reader for integration
+    function latestRoundData(string memory pair)
+        external
+        view
+        returns (
+            uint80 roundId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt_,
+            uint80 answeredInRound
+        )
+    {
+        bytes32 key = keccak256(bytes(pair));
+        OracleData memory o = data[key];
+        return (0, int256(o.price), 0, o.updatedAt, 0);
+    }
+
+    /// @notice Returns the latest price for a given pair (uint256)
+    function getLatestPrice(string memory pair) public view returns (uint256) {
+        bytes32 key = keccak256(bytes(pair));
+        return data[key].price;
+    }
+
+    /// @notice Transfers ownership to a new address
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "MultiOracle: zero address");
+        owner = newOwner;
+    }
+}
+---File Content End---
+
+---Path and files name: ZiGEcocash/contracts/economic_core/Vault.sol
 ---Filename: Vault.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -2481,7 +2889,6 @@ contract Vault is Ownable, ReentrancyGuard, Pausable {
         require(_futureReserve != address(0), "Invalid future reserve address");
         require(_diasporaFund != address(0), "Invalid diaspora fund address");
         require(_zigAddress != address(0), "Invalid ZiG contract address");
-        require(_zigtAddress != address(0), "Invalid ZiGT contract address");
         require(_oracleHubAddress != address(0), "Invalid oracle hub address");
         require(_paxgAddress != address(0), "Invalid PAXG address");
         
@@ -2737,139 +3144,183 @@ contract Vault is Ownable, ReentrancyGuard, Pausable {
         require(token != address(0), "Invalid token address");
         require(IERC20(token).transfer(owner(), amount), "Transfer failed");
     }
+
+    function setZiGT(address _zigt) external onlyOwner {
+        require(_zigt != address(0), "Invalid ZiGT address");
+        zigt = IZiGT(_zigt);
+    }
 }---File Content End---
 
----Path and files name: ZiGEcocash/cultural_utilty_layer/ZiGSoulboundToken.sol
+---Path and files name: ZiGEcocash/contracts/economic_core/BandFeedRegistry.sol
+---Filename: BandFeedRegistry.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+contract BandFeedRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+    // Mapping from asset pair (e.g., keccak256("XAUUSD")) to Band feed address
+    mapping(bytes32 => address) public feedAddresses;
+
+    // Event emitted when a feed address is updated
+    event FeedAddressUpdated(bytes32 indexed assetKey, address feedAddress);
+
+    // Initializer for upgradable contract
+    function initialize(address initialOwner) public initializer {
+        __Ownable_init(initialOwner);
+        __UUPSUpgradeable_init();
+    }
+
+    // Required override for UUPSUpgradeable
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    // Set or update a Band feed address for an asset pair
+    function setFeedAddress(string memory assetPair, address feedAddress) external onlyOwner {
+        require(feedAddress != address(0), "Invalid feed address");
+        bytes32 assetKey = keccak256(bytes(assetPair));
+        feedAddresses[assetKey] = feedAddress;
+        emit FeedAddressUpdated(assetKey, feedAddress);
+    }
+
+    // Lookup a Band feed address for an asset pair
+    function getFeedAddress(string memory assetPair) public view returns (address) {
+        bytes32 assetKey = keccak256(bytes(assetPair));
+        address feedAddress = feedAddresses[assetKey];
+        require(feedAddress != address(0), "Feed address not set");
+        return feedAddress;
+    }
+}---File Content End---
+
+---Path and files name: ZiGEcocash/contracts/cultural_utilty_layer/ZiGSoulboundToken.sol
 ---Filename: ZiGSoulboundToken.sol
 ---File Content Start---
-// // SPDX-License-Identifier: UNLICENSED
-// pragma solidity ^0.8.29;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
 
-// import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-// import "@openzeppelin/contracts/access/Ownable.sol";
-// import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
-// /**
-//  * @title ZiG Soulbound Token
-//  * @dev Identity token for the ZiG ecosystem
-//  */
-// contract ZiGSoulboundToken is ERC721, Ownable {
-//     using Math for uint256;
+/**
+ * @title ZiG Soulbound Token
+ * @dev Identity token for the ZiG ecosystem
+ */
+contract ZiGSoulboundToken is ERC721, Ownable {
+    using Math for uint256;
     
-//     struct SoulData {
-//         string ancestryProof;
-//         uint256 verificationLevel;
-//         uint256 issueDate;
-//         bool isActive;
-//     }
+    struct SoulData {
+        string ancestryProof;
+        uint256 verificationLevel;
+        uint256 issueDate;
+        bool isActive;
+    }
     
-//     mapping(uint256 => SoulData) public soulData;
-//     mapping(address => uint256) public ownerToTokenId;
-//     mapping(address => bool) public verifiers;
+    mapping(uint256 => SoulData) public soulData;
+    mapping(address => uint256) public ownerToTokenId;
+    mapping(address => bool) public verifiers;
     
-//     uint256 private _tokenIdCounter;
+    uint256 private _tokenIdCounter;
     
-//     event SoulIssued(address indexed to, uint256 indexed tokenId, uint256 verificationLevel);
-//     event SoulRevoked(uint256 indexed tokenId);
-//     event VerifierAdded(address indexed verifier);
-//     event VerifierRemoved(address indexed verifier);
+    event SoulIssued(address indexed to, uint256 indexed tokenId, uint256 verificationLevel);
+    event SoulRevoked(uint256 indexed tokenId);
+    event VerifierAdded(address indexed verifier);
+    event VerifierRemoved(address indexed verifier);
     
-//     constructor() ERC721("ZiG Soulbound Identity", "ZiGSoul") Ownable(msg.sender) {
-//         verifiers[msg.sender] = true;
-//     }
+    constructor() ERC721("ZiG Soulbound Identity", "ZiGSoul") Ownable(msg.sender) {
+        verifiers[msg.sender] = true;
+    }
     
-//     modifier onlyVerifier() {
-//         require(verifiers[msg.sender], "ZiGSoul: Not authorized verifier");
-//         _;
-//     }
+    modifier onlyVerifier() {
+        require(verifiers[msg.sender], "ZiGSoul: Not authorized verifier");
+        _;
+    }
     
-//     function addVerifier(address _verifier) external onlyOwner {
-//         require(_verifier != address(0), "ZiGSoul: Invalid verifier address");
-//         verifiers[_verifier] = true;
-//         emit VerifierAdded(_verifier);
-//     }
+    function addVerifier(address _verifier) external onlyOwner {
+        require(_verifier != address(0), "ZiGSoul: Invalid verifier address");
+        verifiers[_verifier] = true;
+        emit VerifierAdded(_verifier);
+    }
     
-//     function removeVerifier(address _verifier) external onlyOwner {
-//         require(_verifier != address(0), "ZiGSoul: Invalid verifier address");
-//         require(_verifier != owner(), "ZiGSoul: Cannot remove owner as verifier");
-//         verifiers[_verifier] = false;
-//         emit VerifierRemoved(_verifier);
-//     }
+    function removeVerifier(address _verifier) external onlyOwner {
+        require(_verifier != address(0), "ZiGSoul: Invalid verifier address");
+        require(_verifier != owner(), "ZiGSoul: Cannot remove owner as verifier");
+        verifiers[_verifier] = false;
+        emit VerifierRemoved(_verifier);
+    }
     
-//     function issueSoul(
-//         address _to,
-//         string memory _ancestryProof,
-//         uint256 _verificationLevel
-//     ) external onlyVerifier {
-//         require(_to != address(0), "ZiGSoul: Invalid recipient address");
-//         require(ownerToTokenId[_to] == 0, "ZiGSoul: Address already has soul");
-//         require(bytes(_ancestryProof).length > 0, "ZiGSoul: Ancestry proof required");
+    function issueSoul(
+        address _to,
+        string memory _ancestryProof,
+        uint256 _verificationLevel
+    ) external onlyVerifier {
+        require(_to != address(0), "ZiGSoul: Invalid recipient address");
+        require(ownerToTokenId[_to] == 0, "ZiGSoul: Address already has soul");
+        require(bytes(_ancestryProof).length > 0, "ZiGSoul: Ancestry proof required");
         
-//         _tokenIdCounter++;
-//         uint256 tokenId = _tokenIdCounter;
+        _tokenIdCounter++;
+        uint256 tokenId = _tokenIdCounter;
         
-//         _safeMint(_to, tokenId);
+        _safeMint(_to, tokenId);
         
-//         soulData[tokenId] = SoulData({
-//             ancestryProof: _ancestryProof,
-//             verificationLevel: _verificationLevel,
-//             issueDate: block.timestamp,
-//             isActive: true
-//         });
+        soulData[tokenId] = SoulData({
+            ancestryProof: _ancestryProof,
+            verificationLevel: _verificationLevel,
+            issueDate: block.timestamp,
+            isActive: true
+        });
         
-//         ownerToTokenId[_to] = tokenId;
-//         emit SoulIssued(_to, tokenId, _verificationLevel);
-//     }
+        ownerToTokenId[_to] = tokenId;
+        emit SoulIssued(_to, tokenId, _verificationLevel);
+    }
     
-//     function revokeSoul(uint256 _tokenId) external onlyVerifier {
-//         require(_ownerOf(_tokenId) != address(0), "ZiGSoul: Token does not exist");
-//         require(soulData[_tokenId].isActive, "ZiGSoul: Soul already revoked");
+    function revokeSoul(uint256 _tokenId) external onlyVerifier {
+        require(_ownerOf(_tokenId) != address(0), "ZiGSoul: Token does not exist");
+        require(soulData[_tokenId].isActive, "ZiGSoul: Soul already revoked");
         
-//         soulData[_tokenId].isActive = false;
-//         address owner = ownerOf(_tokenId);
-//         ownerToTokenId[owner] = 0;
+        soulData[_tokenId].isActive = false;
+        address owner = ownerOf(_tokenId);
+        ownerToTokenId[owner] = 0;
         
-//         emit SoulRevoked(_tokenId);
-//     }
+        emit SoulRevoked(_tokenId);
+    }
     
-//     // Override transfer functions to make soulbound
-//     function transferFrom(address from, address to, uint256 tokenId) public virtual override {
-//         revert("ZiGSoul: Soulbound tokens cannot be transferred");
-//     }
+    // Override transfer functions to make soulbound
+    function transferFrom(address from, address to, uint256 tokenId) public virtual override {
+        revert("ZiGSoul: Soulbound tokens cannot be transferred");
+    }
     
-//     function safeTransferFrom(address from, address to, uint256 tokenId) public virtual override {
-//         revert("ZiGSoul: Soulbound tokens cannot be transferred");
-//     }
+    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public pure virtual override {
+        revert("ZiGSoul: Soulbound tokens cannot be transferred");
+    }
     
-//     function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public pure virtual override {
-//         revert("ZiGSoul: Soulbound tokens cannot be transferred");
-//     }
+    function approve(address to, uint256 tokenId) public virtual override {
+        revert("ZiGSoul: Soulbound tokens cannot be approved");
+    }
     
-//     function approve(address to, uint256 tokenId) public virtual override {
-//         revert("ZiGSoul: Soulbound tokens cannot be approved");
-//     }
+    function setApprovalForAll(address operator, bool approved) public virtual override {
+        revert("ZiGSoul: Soulbound tokens cannot be approved");
+    }
     
-//     function setApprovalForAll(address operator, bool approved) public virtual override {
-//         revert("ZiGSoul: Soulbound tokens cannot be approved");
-//     }
+    function getSoulData(uint256 _tokenId) external view returns (SoulData memory) {
+        require(_ownerOf(_tokenId) != address(0), "ZiGSoul: Token does not exist");
+        return soulData[_tokenId];
+    }
     
-//     function getSoulData(uint256 _tokenId) external view returns (SoulData memory) {
-//         require(_ownerOf(_tokenId) != address(0), "ZiGSoul: Token does not exist");
-//         return soulData[_tokenId];
-//     }
+    function getUserSoul(address _user) external view returns (uint256, SoulData memory) {
+        uint256 tokenId = ownerToTokenId[_user];
+        require(tokenId != 0, "ZiGSoul: User has no soul token");
+        return (tokenId, soulData[tokenId]);
+    }
     
-//     function getUserSoul(address _user) external view returns (uint256, SoulData memory) {
-//         uint256 tokenId = ownerToTokenId[_user];
-//         require(tokenId != 0, "ZiGSoul: User has no soul token");
-//         return (tokenId, soulData[tokenId]);
-//     }
-    
-//     function isVerifier(address _address) external view returns (bool) {
-//         return verifiers[_address];
-//     }
-// }---File Content End---
+    function isVerifier(address _address) external view returns (bool) {
+        return verifiers[_address];
+    }
+}---File Content End---
 
----Path and files name: ZiGEcocash/cultural_utilty_layer/SoulReparationNFT.sol
+---Path and files name: ZiGEcocash/contracts/cultural_utilty_layer/SoulReparationNFT.sol
 ---Filename: SoulReparationNFT.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -2881,7 +3332,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @title Soul Reparation NFT
- * @dev NFT representing reparation claims and heritage
+ * @dev NFT representing reparation claims and heritage with enhanced image support
  */
 contract SoulReparationNFT is ERC721, Ownable {
     using Math for uint256;
@@ -2892,31 +3343,58 @@ contract SoulReparationNFT is ERC721, Ownable {
         uint256 claimDate;
         bool isClaimed;
         string metadataURI;
+        string imageURI;        // Direct image URL
+        string name;            // NFT name
+        string description;     // NFT description
+        string[] attributes;    // Array of attributes
+        string region;          // Geographic region
+        string heritageType;    // Type of heritage (e.g., "Cultural", "Economic", "Land")
     }
     
     mapping(uint256 => ReparationData) public reparations;
     mapping(address => uint256[]) public userClaims;
+    mapping(string => uint256) public regionCounts;
     
     uint256 private _tokenIdCounter;
     address public reparationsDAO;
     
-    event ReparationClaimed(address indexed claimant, uint256 indexed tokenId, uint256 amount);
+    // Predefined heritage types
+    string[] public heritageTypes = ["Cultural", "Economic", "Land", "Education", "Healthcare", "Infrastructure"];
+    
+    event ReparationClaimed(
+        address indexed claimant, 
+        uint256 indexed tokenId, 
+        uint256 amount,
+        string region,
+        string heritageType
+    );
+    
+    event ImageUpdated(uint256 indexed tokenId, string newImageURI);
     
     constructor(address _reparationsDAO) ERC721("Soul Reparation NFT", "SRNFT") Ownable(msg.sender) {
         require(_reparationsDAO != address(0), "SRNFT: Invalid DAO address");
         reparationsDAO = _reparationsDAO;
     }
     
-    function claimReparation(
+    function _claimReparationInternal(
         address _claimant,
         string memory _heritageProof,
         uint256 _claimAmount,
-        string memory _metadataURI
-    ) external returns (uint256) {
-        require(msg.sender == reparationsDAO, "SRNFT: Only DAO can issue claims");
+        string memory _metadataURI,
+        string memory _imageURI,
+        string memory _name,
+        string memory _description,
+        string[] memory _attributes,
+        string memory _region,
+        string memory _heritageType
+    ) internal returns (uint256) {
         require(_claimant != address(0), "SRNFT: Invalid claimant address");
         require(bytes(_heritageProof).length > 0, "SRNFT: Heritage proof required");
         require(bytes(_metadataURI).length > 0, "SRNFT: Metadata URI required");
+        require(bytes(_imageURI).length > 0, "SRNFT: Image URI required");
+        require(bytes(_name).length > 0, "SRNFT: Name required");
+        require(bytes(_region).length > 0, "SRNFT: Region required");
+        require(bytes(_heritageType).length > 0, "SRNFT: Heritage type required");
         
         _tokenIdCounter++;
         uint256 tokenId = _tokenIdCounter;
@@ -2928,13 +3406,129 @@ contract SoulReparationNFT is ERC721, Ownable {
             claimAmount: _claimAmount,
             claimDate: block.timestamp,
             isClaimed: false,
-            metadataURI: _metadataURI
+            metadataURI: _metadataURI,
+            imageURI: _imageURI,
+            name: _name,
+            description: _description,
+            attributes: _attributes,
+            region: _region,
+            heritageType: _heritageType
         });
         
         userClaims[_claimant].push(tokenId);
+        regionCounts[_region]++;
         
-        emit ReparationClaimed(_claimant, tokenId, _claimAmount);
+        emit ReparationClaimed(_claimant, tokenId, _claimAmount, _region, _heritageType);
         return tokenId;
+    }
+    
+    function claimReparation(
+        address _claimant,
+        string memory _heritageProof,
+        uint256 _claimAmount,
+        string memory _metadataURI,
+        string memory _imageURI,
+        string memory _name,
+        string memory _description,
+        string[] memory _attributes,
+        string memory _region,
+        string memory _heritageType
+    ) external returns (uint256) {
+        require(msg.sender == reparationsDAO, "SRNFT: Only DAO can issue claims");
+        return _claimReparationInternal(
+            _claimant, 
+            _heritageProof, 
+            _claimAmount, 
+            _metadataURI, 
+            _imageURI, 
+            _name, 
+            _description, 
+            _attributes, 
+            _region, 
+            _heritageType
+        );
+    }
+
+    // Simplified claim function for backward compatibility
+    function claimReparationSimple(
+        address _claimant,
+        string memory _heritageProof,
+        uint256 _claimAmount,
+        string memory _metadataURI
+    ) external returns (uint256) {
+        require(msg.sender == reparationsDAO, "SRNFT: Only DAO can issue claims");
+        string[] memory defaultAttributes = new string[](0);
+        return _claimReparationInternal(
+            _claimant, 
+            _heritageProof, 
+            _claimAmount, 
+            _metadataURI, 
+            _metadataURI, 
+            "Soul Reparation NFT", 
+            "A reparation claim NFT representing heritage and justice", 
+            defaultAttributes, 
+            "Africa", 
+            "Cultural"
+        );
+    }
+
+    // Update image URI for an existing NFT
+    function updateImageURI(uint256 tokenId, string memory _newImageURI) external {
+        require(msg.sender == reparationsDAO || msg.sender == owner(), "SRNFT: Only DAO or owner can update image");
+        require(_ownerOf(tokenId) != address(0), "SRNFT: Token does not exist");
+        require(bytes(_newImageURI).length > 0, "SRNFT: Empty image URI");
+        
+        reparations[tokenId].imageURI = _newImageURI;
+        emit ImageUpdated(tokenId, _newImageURI);
+    }
+
+    // Get image URI directly
+    function getImageURI(uint256 tokenId) external view returns (string memory) {
+        require(_ownerOf(tokenId) != address(0), "SRNFT: Token does not exist");
+        return reparations[tokenId].imageURI;
+    }
+
+    // Get reparations by region
+    function getReparationsByRegion(string memory _region) external view returns (uint256[] memory) {
+        uint256[] memory result = new uint256[](regionCounts[_region]);
+        uint256 index = 0;
+        
+        for (uint256 tokenId = 1; tokenId <= _tokenIdCounter; tokenId++) {
+            if (_ownerOf(tokenId) != address(0) && 
+                keccak256(bytes(reparations[tokenId].region)) == keccak256(bytes(_region))) {
+                result[index] = tokenId;
+                index++;
+            }
+        }
+        
+        return result;
+    }
+
+    // Get reparations by heritage type
+    function getReparationsByHeritageType(string memory _heritageType) external view returns (uint256[] memory) {
+        uint256 count = 0;
+        
+        // First pass: count matching tokens
+        for (uint256 tokenId = 1; tokenId <= _tokenIdCounter; tokenId++) {
+            if (_ownerOf(tokenId) != address(0) && 
+                keccak256(bytes(reparations[tokenId].heritageType)) == keccak256(bytes(_heritageType))) {
+                count++;
+            }
+        }
+        
+        // Second pass: collect token IDs
+        uint256[] memory result = new uint256[](count);
+        uint256 index = 0;
+        
+        for (uint256 tokenId = 1; tokenId <= _tokenIdCounter; tokenId++) {
+            if (_ownerOf(tokenId) != address(0) && 
+                keccak256(bytes(reparations[tokenId].heritageType)) == keccak256(bytes(_heritageType))) {
+                result[index] = tokenId;
+                index++;
+            }
+        }
+        
+        return result;
     }
     
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
@@ -2956,5 +3550,462 @@ contract SoulReparationNFT is ERC721, Ownable {
         require(_ownerOf(tokenId) != address(0), "SRNFT: Token does not exist");
         reparations[tokenId].isClaimed = true;
     }
+
+    // Get all available heritage types
+    function getHeritageTypes() external view returns (string[] memory) {
+        return heritageTypes;
+    }
+
+    // Get count of reparations in a region
+    function getRegionCount(string memory _region) external view returns (uint256) {
+        return regionCounts[_region];
+    }
+
+    // Get detailed reparation data
+    function getReparationData(uint256 tokenId) external view returns (ReparationData memory) {
+        require(_ownerOf(tokenId) != address(0), "SRNFT: Token does not exist");
+        return reparations[tokenId];
+    }
 }---File Content End---
+
+---Path and files name: ZiGEcocash/contracts/TestToken.sol
+---Filename: TestToken.sol
+---File Content Start---
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract TestToken is ERC20 {
+    constructor() ERC20("Test Token", "TEST") {
+        _mint(msg.sender, 1000000 * 10**decimals());
+    }
+} ---File Content End---
+
+---Path and files name: ZiGEcocash/.deps/npm/@gnosis.pm/safe-contracts@1.3.0/contracts/GnosisSafe.sol
+---Filename: GnosisSafe.sol
+---File Content Start---
+// SPDX-License-Identifier: LGPL-3.0-only
+pragma solidity >=0.7.0 <0.9.0;
+
+import "./base/ModuleManager.sol";
+import "./base/OwnerManager.sol";
+import "./base/FallbackManager.sol";
+import "./base/GuardManager.sol";
+import "./common/EtherPaymentFallback.sol";
+import "./common/Singleton.sol";
+import "./common/SignatureDecoder.sol";
+import "./common/SecuredTokenTransfer.sol";
+import "./common/StorageAccessible.sol";
+import "./interfaces/ISignatureValidator.sol";
+import "./external/GnosisSafeMath.sol";
+
+/// @title Gnosis Safe - A multisignature wallet with support for confirmations using signed messages based on ERC191.
+/// @author Stefan George - <stefan@gnosis.io>
+/// @author Richard Meissner - <richard@gnosis.io>
+contract GnosisSafe is
+    EtherPaymentFallback,
+    Singleton,
+    ModuleManager,
+    OwnerManager,
+    SignatureDecoder,
+    SecuredTokenTransfer,
+    ISignatureValidatorConstants,
+    FallbackManager,
+    StorageAccessible,
+    GuardManager
+{
+    using GnosisSafeMath for uint256;
+
+    string public constant VERSION = "1.3.0";
+
+    // keccak256(
+    //     "EIP712Domain(uint256 chainId,address verifyingContract)"
+    // );
+    bytes32 private constant DOMAIN_SEPARATOR_TYPEHASH = 0x47e79534a245952e8b16893a336b85a3d9ea9fa8c573f3d803afb92a79469218;
+
+    // keccak256(
+    //     "SafeTx(address to,uint256 value,bytes data,uint8 operation,uint256 safeTxGas,uint256 baseGas,uint256 gasPrice,address gasToken,address refundReceiver,uint256 nonce)"
+    // );
+    bytes32 private constant SAFE_TX_TYPEHASH = 0xbb8310d486368db6bd6f849402fdd73ad53d316b5a4b2644ad6efe0f941286d8;
+
+    event SafeSetup(address indexed initiator, address[] owners, uint256 threshold, address initializer, address fallbackHandler);
+    event ApproveHash(bytes32 indexed approvedHash, address indexed owner);
+    event SignMsg(bytes32 indexed msgHash);
+    event ExecutionFailure(bytes32 txHash, uint256 payment);
+    event ExecutionSuccess(bytes32 txHash, uint256 payment);
+
+    uint256 public nonce;
+    bytes32 private _deprecatedDomainSeparator;
+    // Mapping to keep track of all message hashes that have been approve by ALL REQUIRED owners
+    mapping(bytes32 => uint256) public signedMessages;
+    // Mapping to keep track of all hashes (message or transaction) that have been approve by ANY owners
+    mapping(address => mapping(bytes32 => uint256)) public approvedHashes;
+
+    // This constructor ensures that this contract can only be used as a master copy for Proxy contracts
+    constructor() {
+        // By setting the threshold it is not possible to call setup anymore,
+        // so we create a Safe with 0 owners and threshold 1.
+        // This is an unusable Safe, perfect for the singleton
+        threshold = 1;
+    }
+
+    /// @dev Setup function sets initial storage of contract.
+    /// @param _owners List of Safe owners.
+    /// @param _threshold Number of required confirmations for a Safe transaction.
+    /// @param to Contract address for optional delegate call.
+    /// @param data Data payload for optional delegate call.
+    /// @param fallbackHandler Handler for fallback calls to this contract
+    /// @param paymentToken Token that should be used for the payment (0 is ETH)
+    /// @param payment Value that should be paid
+    /// @param paymentReceiver Adddress that should receive the payment (or 0 if tx.origin)
+    function setup(
+        address[] calldata _owners,
+        uint256 _threshold,
+        address to,
+        bytes calldata data,
+        address fallbackHandler,
+        address paymentToken,
+        uint256 payment,
+        address payable paymentReceiver
+    ) external {
+        // setupOwners checks if the Threshold is already set, therefore preventing that this method is called twice
+        setupOwners(_owners, _threshold);
+        if (fallbackHandler != address(0)) internalSetFallbackHandler(fallbackHandler);
+        // As setupOwners can only be called if the contract has not been initialized we don't need a check for setupModules
+        setupModules(to, data);
+
+        if (payment > 0) {
+            // To avoid running into issues with EIP-170 we reuse the handlePayment function (to avoid adjusting code of that has been verified we do not adjust the method itself)
+            // baseGas = 0, gasPrice = 1 and gas = payment => amount = (payment + 0) * 1 = payment
+            handlePayment(payment, 0, 1, paymentToken, paymentReceiver);
+        }
+        emit SafeSetup(msg.sender, _owners, _threshold, to, fallbackHandler);
+    }
+
+    /// @dev Allows to execute a Safe transaction confirmed by required number of owners and then pays the account that submitted the transaction.
+    ///      Note: The fees are always transferred, even if the user transaction fails.
+    /// @param to Destination address of Safe transaction.
+    /// @param value Ether value of Safe transaction.
+    /// @param data Data payload of Safe transaction.
+    /// @param operation Operation type of Safe transaction.
+    /// @param safeTxGas Gas that should be used for the Safe transaction.
+    /// @param baseGas Gas costs that are independent of the transaction execution(e.g. base transaction fee, signature check, payment of the refund)
+    /// @param gasPrice Gas price that should be used for the payment calculation.
+    /// @param gasToken Token address (or 0 if ETH) that is used for the payment.
+    /// @param refundReceiver Address of receiver of gas payment (or 0 if tx.origin).
+    /// @param signatures Packed signature data ({bytes32 r}{bytes32 s}{uint8 v})
+    function execTransaction(
+        address to,
+        uint256 value,
+        bytes calldata data,
+        Enum.Operation operation,
+        uint256 safeTxGas,
+        uint256 baseGas,
+        uint256 gasPrice,
+        address gasToken,
+        address payable refundReceiver,
+        bytes memory signatures
+    ) public payable virtual returns (bool success) {
+        bytes32 txHash;
+        // Use scope here to limit variable lifetime and prevent `stack too deep` errors
+        {
+            bytes memory txHashData =
+                encodeTransactionData(
+                    // Transaction info
+                    to,
+                    value,
+                    data,
+                    operation,
+                    safeTxGas,
+                    // Payment info
+                    baseGas,
+                    gasPrice,
+                    gasToken,
+                    refundReceiver,
+                    // Signature info
+                    nonce
+                );
+            // Increase nonce and execute transaction.
+            nonce++;
+            txHash = keccak256(txHashData);
+            checkSignatures(txHash, txHashData, signatures);
+        }
+        address guard = getGuard();
+        {
+            if (guard != address(0)) {
+                Guard(guard).checkTransaction(
+                    // Transaction info
+                    to,
+                    value,
+                    data,
+                    operation,
+                    safeTxGas,
+                    // Payment info
+                    baseGas,
+                    gasPrice,
+                    gasToken,
+                    refundReceiver,
+                    // Signature info
+                    signatures,
+                    msg.sender
+                );
+            }
+        }
+        // We require some gas to emit the events (at least 2500) after the execution and some to perform code until the execution (500)
+        // We also include the 1/64 in the check that is not send along with a call to counteract potential shortings because of EIP-150
+        require(gasleft() >= ((safeTxGas * 64) / 63).max(safeTxGas + 2500) + 500, "GS010");
+        // Use scope here to limit variable lifetime and prevent `stack too deep` errors
+        {
+            uint256 gasUsed = gasleft();
+            // If the gasPrice is 0 we assume that nearly all available gas can be used (it is always more than safeTxGas)
+            // We only substract 2500 (compared to the 3000 before) to ensure that the amount passed is still higher than safeTxGas
+            success = execute(to, value, data, operation, gasPrice == 0 ? (gasleft() - 2500) : safeTxGas);
+            gasUsed = gasUsed.sub(gasleft());
+            // If no safeTxGas and no gasPrice was set (e.g. both are 0), then the internal tx is required to be successful
+            // This makes it possible to use `estimateGas` without issues, as it searches for the minimum gas where the tx doesn't revert
+            require(success || safeTxGas != 0 || gasPrice != 0, "GS013");
+            // We transfer the calculated tx costs to the tx.origin to avoid sending it to intermediate contracts that have made calls
+            uint256 payment = 0;
+            if (gasPrice > 0) {
+                payment = handlePayment(gasUsed, baseGas, gasPrice, gasToken, refundReceiver);
+            }
+            if (success) emit ExecutionSuccess(txHash, payment);
+            else emit ExecutionFailure(txHash, payment);
+        }
+        {
+            if (guard != address(0)) {
+                Guard(guard).checkAfterExecution(txHash, success);
+            }
+        }
+    }
+
+    function handlePayment(
+        uint256 gasUsed,
+        uint256 baseGas,
+        uint256 gasPrice,
+        address gasToken,
+        address payable refundReceiver
+    ) private returns (uint256 payment) {
+        // solhint-disable-next-line avoid-tx-origin
+        address payable receiver = refundReceiver == address(0) ? payable(tx.origin) : refundReceiver;
+        if (gasToken == address(0)) {
+            // For ETH we will only adjust the gas price to not be higher than the actual used gas price
+            payment = gasUsed.add(baseGas).mul(gasPrice < tx.gasprice ? gasPrice : tx.gasprice);
+            require(receiver.send(payment), "GS011");
+        } else {
+            payment = gasUsed.add(baseGas).mul(gasPrice);
+            require(transferToken(gasToken, receiver, payment), "GS012");
+        }
+    }
+
+    /**
+     * @dev Checks whether the signature provided is valid for the provided data, hash. Will revert otherwise.
+     * @param dataHash Hash of the data (could be either a message hash or transaction hash)
+     * @param data That should be signed (this is passed to an external validator contract)
+     * @param signatures Signature data that should be verified. Can be ECDSA signature, contract signature (EIP-1271) or approved hash.
+     */
+    function checkSignatures(
+        bytes32 dataHash,
+        bytes memory data,
+        bytes memory signatures
+    ) public view {
+        // Load threshold to avoid multiple storage loads
+        uint256 _threshold = threshold;
+        // Check that a threshold is set
+        require(_threshold > 0, "GS001");
+        checkNSignatures(dataHash, data, signatures, _threshold);
+    }
+
+    /**
+     * @dev Checks whether the signature provided is valid for the provided data, hash. Will revert otherwise.
+     * @param dataHash Hash of the data (could be either a message hash or transaction hash)
+     * @param data That should be signed (this is passed to an external validator contract)
+     * @param signatures Signature data that should be verified. Can be ECDSA signature, contract signature (EIP-1271) or approved hash.
+     * @param requiredSignatures Amount of required valid signatures.
+     */
+    function checkNSignatures(
+        bytes32 dataHash,
+        bytes memory data,
+        bytes memory signatures,
+        uint256 requiredSignatures
+    ) public view {
+        // Check that the provided signature data is not too short
+        require(signatures.length >= requiredSignatures.mul(65), "GS020");
+        // There cannot be an owner with address 0.
+        address lastOwner = address(0);
+        address currentOwner;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+        uint256 i;
+        for (i = 0; i < requiredSignatures; i++) {
+            (v, r, s) = signatureSplit(signatures, i);
+            if (v == 0) {
+                // If v is 0 then it is a contract signature
+                // When handling contract signatures the address of the contract is encoded into r
+                currentOwner = address(uint160(uint256(r)));
+
+                // Check that signature data pointer (s) is not pointing inside the static part of the signatures bytes
+                // This check is not completely accurate, since it is possible that more signatures than the threshold are send.
+                // Here we only check that the pointer is not pointing inside the part that is being processed
+                require(uint256(s) >= requiredSignatures.mul(65), "GS021");
+
+                // Check that signature data pointer (s) is in bounds (points to the length of data -> 32 bytes)
+                require(uint256(s).add(32) <= signatures.length, "GS022");
+
+                // Check if the contract signature is in bounds: start of data is s + 32 and end is start + signature length
+                uint256 contractSignatureLen;
+                // solhint-disable-next-line no-inline-assembly
+                assembly {
+                    contractSignatureLen := mload(add(add(signatures, s), 0x20))
+                }
+                require(uint256(s).add(32).add(contractSignatureLen) <= signatures.length, "GS023");
+
+                // Check signature
+                bytes memory contractSignature;
+                // solhint-disable-next-line no-inline-assembly
+                assembly {
+                    // The signature data for contract signatures is appended to the concatenated signatures and the offset is stored in s
+                    contractSignature := add(add(signatures, s), 0x20)
+                }
+                require(ISignatureValidator(currentOwner).isValidSignature(data, contractSignature) == EIP1271_MAGIC_VALUE, "GS024");
+            } else if (v == 1) {
+                // If v is 1 then it is an approved hash
+                // When handling approved hashes the address of the approver is encoded into r
+                currentOwner = address(uint160(uint256(r)));
+                // Hashes are automatically approved by the sender of the message or when they have been pre-approved via a separate transaction
+                require(msg.sender == currentOwner || approvedHashes[currentOwner][dataHash] != 0, "GS025");
+            } else if (v > 30) {
+                // If v > 30 then default va (27,28) has been adjusted for eth_sign flow
+                // To support eth_sign and similar we adjust v and hash the messageHash with the Ethereum message prefix before applying ecrecover
+                currentOwner = ecrecover(keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", dataHash)), v - 4, r, s);
+            } else {
+                // Default is the ecrecover flow with the provided data hash
+                // Use ecrecover with the messageHash for EOA signatures
+                currentOwner = ecrecover(dataHash, v, r, s);
+            }
+            require(currentOwner > lastOwner && owners[currentOwner] != address(0) && currentOwner != SENTINEL_OWNERS, "GS026");
+            lastOwner = currentOwner;
+        }
+    }
+
+    /// @dev Allows to estimate a Safe transaction.
+    ///      This method is only meant for estimation purpose, therefore the call will always revert and encode the result in the revert data.
+    ///      Since the `estimateGas` function includes refunds, call this method to get an estimated of the costs that are deducted from the safe with `execTransaction`
+    /// @param to Destination address of Safe transaction.
+    /// @param value Ether value of Safe transaction.
+    /// @param data Data payload of Safe transaction.
+    /// @param operation Operation type of Safe transaction.
+    /// @return Estimate without refunds and overhead fees (base transaction and payload data gas costs).
+    /// @notice Deprecated in favor of common/StorageAccessible.sol and will be removed in next version.
+    function requiredTxGas(
+        address to,
+        uint256 value,
+        bytes calldata data,
+        Enum.Operation operation
+    ) external returns (uint256) {
+        uint256 startGas = gasleft();
+        // We don't provide an error message here, as we use it to return the estimate
+        require(execute(to, value, data, operation, gasleft()));
+        uint256 requiredGas = startGas - gasleft();
+        // Convert response to string and return via error message
+        revert(string(abi.encodePacked(requiredGas)));
+    }
+
+    /**
+     * @dev Marks a hash as approved. This can be used to validate a hash that is used by a signature.
+     * @param hashToApprove The hash that should be marked as approved for signatures that are verified by this contract.
+     */
+    function approveHash(bytes32 hashToApprove) external {
+        require(owners[msg.sender] != address(0), "GS030");
+        approvedHashes[msg.sender][hashToApprove] = 1;
+        emit ApproveHash(hashToApprove, msg.sender);
+    }
+
+    /// @dev Returns the chain id used by this contract.
+    function getChainId() public view returns (uint256) {
+        uint256 id;
+        // solhint-disable-next-line no-inline-assembly
+        assembly {
+            id := chainid()
+        }
+        return id;
+    }
+
+    function domainSeparator() public view returns (bytes32) {
+        return keccak256(abi.encode(DOMAIN_SEPARATOR_TYPEHASH, getChainId(), this));
+    }
+
+    /// @dev Returns the bytes that are hashed to be signed by owners.
+    /// @param to Destination address.
+    /// @param value Ether value.
+    /// @param data Data payload.
+    /// @param operation Operation type.
+    /// @param safeTxGas Gas that should be used for the safe transaction.
+    /// @param baseGas Gas costs for that are independent of the transaction execution(e.g. base transaction fee, signature check, payment of the refund)
+    /// @param gasPrice Maximum gas price that should be used for this transaction.
+    /// @param gasToken Token address (or 0 if ETH) that is used for the payment.
+    /// @param refundReceiver Address of receiver of gas payment (or 0 if tx.origin).
+    /// @param _nonce Transaction nonce.
+    /// @return Transaction hash bytes.
+    function encodeTransactionData(
+        address to,
+        uint256 value,
+        bytes calldata data,
+        Enum.Operation operation,
+        uint256 safeTxGas,
+        uint256 baseGas,
+        uint256 gasPrice,
+        address gasToken,
+        address refundReceiver,
+        uint256 _nonce
+    ) public view returns (bytes memory) {
+        bytes32 safeTxHash =
+            keccak256(
+                abi.encode(
+                    SAFE_TX_TYPEHASH,
+                    to,
+                    value,
+                    keccak256(data),
+                    operation,
+                    safeTxGas,
+                    baseGas,
+                    gasPrice,
+                    gasToken,
+                    refundReceiver,
+                    _nonce
+                )
+            );
+        return abi.encodePacked(bytes1(0x19), bytes1(0x01), domainSeparator(), safeTxHash);
+    }
+
+    /// @dev Returns hash to be signed by owners.
+    /// @param to Destination address.
+    /// @param value Ether value.
+    /// @param data Data payload.
+    /// @param operation Operation type.
+    /// @param safeTxGas Fas that should be used for the safe transaction.
+    /// @param baseGas Gas costs for data used to trigger the safe transaction.
+    /// @param gasPrice Maximum gas price that should be used for this transaction.
+    /// @param gasToken Token address (or 0 if ETH) that is used for the payment.
+    /// @param refundReceiver Address of receiver of gas payment (or 0 if tx.origin).
+    /// @param _nonce Transaction nonce.
+    /// @return Transaction hash.
+    function getTransactionHash(
+        address to,
+        uint256 value,
+        bytes calldata data,
+        Enum.Operation operation,
+        uint256 safeTxGas,
+        uint256 baseGas,
+        uint256 gasPrice,
+        address gasToken,
+        address refundReceiver,
+        uint256 _nonce
+    ) public view returns (bytes32) {
+        return keccak256(encodeTransactionData(to, value, data, operation, safeTxGas, baseGas, gasPrice, gasToken, refundReceiver, _nonce));
+    }
+}
+---File Content End---
 
