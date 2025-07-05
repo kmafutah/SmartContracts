@@ -17,7 +17,7 @@ const NFT_TEMPLATES = {
       { trait_type: "Rarity", value: "Common" },
       { trait_type: "Heritage", value: "Traditional" }
     ],
-    imageBaseUrl: "https://ipfs.io/ipfs/",
+    imageBaseUrl: "https://bafybeigbdw3462m4hho6bgelosgn6f5dmtu3cdczrekopfubxetf6qzrza.ipfs.dweb.link?filename=ZNFT.png",
     backgroundColor: "#FFD700"
   },
   economic: {
@@ -28,7 +28,7 @@ const NFT_TEMPLATES = {
       { trait_type: "Rarity", value: "Rare" },
       { trait_type: "Power", value: "Financial" }
     ],
-    imageBaseUrl: "https://ipfs.io/ipfs/",
+    imageBaseUrl: "https://bafybeib4w4ycgj3jgfc7aep56bgi3ulwes3hk3ov2ixakgj5zrai7jgucm.ipfs.dweb.link?filename=ZBC.png",
     backgroundColor: "#32CD32"
   },
   governance: {
@@ -39,7 +39,7 @@ const NFT_TEMPLATES = {
       { trait_type: "Rarity", value: "Epic" },
       { trait_type: "Authority", value: "Democratic" }
     ],
-    imageBaseUrl: "https://ipfs.io/ipfs/",
+    imageBaseUrl: "https://bafybeihtj7eqyqzjv5qjwiwupf6j7fafgt7v6q4kd2fui4i5df7wuuw7ji.ipfs.dweb.link?filename=ZGT.png",
     backgroundColor: "#4169E1"
   },
   gamefi: {
@@ -50,7 +50,7 @@ const NFT_TEMPLATES = {
       { trait_type: "Rarity", value: "Legendary" },
       { trait_type: "Achievement", value: "Gaming" }
     ],
-    imageBaseUrl: "https://ipfs.io/ipfs/",
+    imageBaseUrl: "https://bafybeias3dyfmp6s5aosn42mdpkcop2c5rw5d7hgj4lzlcuhtq66zsnv6q.ipfs.dweb.link?filename=ZGF.png",
     backgroundColor: "#FF4500"
   },
   utility: {
@@ -61,7 +61,7 @@ const NFT_TEMPLATES = {
       { trait_type: "Rarity", value: "Common" },
       { trait_type: "Function", value: "Service Access" }
     ],
-    imageBaseUrl: "https://ipfs.io/ipfs/",
+    imageBaseUrl: "https://bafybeihri7ttl4cfgk5hlwjfq7kiquvf6bgjwgiljrjpe5kzzlhdsmvdcy.ipfs.dweb.link?filename=ZUT.png",
     backgroundColor: "#9370DB"
   },
   reparation: {
@@ -72,7 +72,7 @@ const NFT_TEMPLATES = {
       { trait_type: "Rarity", value: "Mythic" },
       { trait_type: "Justice", value: "Heritage" }
     ],
-    imageBaseUrl: "https://ipfs.io/ipfs/",
+    imageBaseUrl: "https://bafybeigdjj7vxswwtnczbfr6u4lj5k4r43etnjq2tkdomqv4yrrenwgjfu.ipfs.dweb.link?filename=SRPNFT.png",
     backgroundColor: "#8B0000"
   }
 };

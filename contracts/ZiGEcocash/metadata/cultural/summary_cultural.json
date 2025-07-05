@@ -1,0 +1,69 @@
+{
+  "category": "cultural",
+  "totalGenerated": 10,
+  "startTokenId": 1,
+  "endTokenId": 10,
+  "generatedAt": "2025-07-04T02:32:30.114Z",
+  "files": [
+    {
+      "tokenId": 1,
+      "filename": "cultural_1.json",
+      "name": "ZiG Cultural Heritage #1",
+      "rarity": "Common"
+    },
+    {
+      "tokenId": 2,
+      "filename": "cultural_2.json",
+      "name": "ZiG Cultural Heritage #2",
+      "rarity": "Common"
+    },
+    {
+      "tokenId": 3,
+      "filename": "cultural_3.json",
+      "name": "ZiG Cultural Heritage #3",
+      "rarity": "Common"
+    },
+    {
+      "tokenId": 4,
+      "filename": "cultural_4.json",
+      "name": "ZiG Cultural Heritage #4",
+      "rarity": "Common"
+    },
+    {
+      "tokenId": 5,
+      "filename": "cultural_5.json",
+      "name": "ZiG Cultural Heritage #5",
+      "rarity": "Common"
+    },
+    {
+      "tokenId": 6,
+      "filename": "cultural_6.json",
+      "name": "ZiG Cultural Heritage #6",
+      "rarity": "Common"
+    },
+    {
+      "tokenId": 7,
+      "filename": "cultural_7.json",
+      "name": "ZiG Cultural Heritage #7",
+      "rarity": "Common"
+    },
+    {
+      "tokenId": 8,
+      "filename": "cultural_8.json",
+      "name": "ZiG Cultural Heritage #8",
+      "rarity": "Common"
+    },
+    {
+      "tokenId": 9,
+      "filename": "cultural_9.json",
+      "name": "ZiG Cultural Heritage #9",
+      "rarity": "Common"
+    },
+    {
+      "tokenId": 10,
+      "filename": "cultural_10.json",
+      "name": "ZiG Cultural Heritage #10",
+      "rarity": "Common"
+    }
+  ]
+}

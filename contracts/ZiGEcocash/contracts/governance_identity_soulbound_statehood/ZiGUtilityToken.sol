@@ -48,4 +48,14 @@ contract ZiGUtilityToken is ERC1155, Ownable {
     function uri(uint256 _id) public view virtual override returns (string memory) {
         return tokenURIs[_id];
     }
+
+    // Burn function for DAO fuel system
+    function burn(address account, uint256 id, uint256 amount) public {
+        require(
+            account == msg.sender || isApprovedForAll(account, msg.sender),
+            "ZiGUtility: caller is not owner nor approved"
+        );
+        _burn(account, id, amount);
+        tokenSupply[id] -= amount;
+    }
 }

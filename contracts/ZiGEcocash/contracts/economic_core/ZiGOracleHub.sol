@@ -37,6 +37,7 @@ interface IBandOracle {
 /**
  * @title ZiG Oracle Hub
  * @dev Price oracle for the ZiG ecosystem combining Chainlink, Band Protocol, and internal feeds
+ * @dev Now supports DAO-controlled adjustment of asset weights and symbols
  */
 contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     
@@ -77,12 +78,22 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     mapping(string => PriceData) public emergencyPrices;
     mapping(address => bool) public emergencyOracles;
     
+    // DAO-controlled asset weights and symbols
+    address public dao;
+    string[] public cryptoSymbols;
+    uint256[] public cryptoWeights;
+    string[] public metalSymbols;
+    uint256[] public metalWeights;
+    string[] public forexSymbols;
+    uint256[] public forexWeights;
+    
     uint256 public constant PRICE_STALENESS_THRESHOLD = 3600; // 1 hour
     uint256 public constant EMERGENCY_STALENESS_THRESHOLD = 7200; // 2 hours for emergency feeds
     uint256 public constant PRECISION = 1e18; // 18 decimal precision
     uint256 public constant MAX_PRICE_DEVIATION = 1000; // 10% max deviation (in basis points)
+    uint256 public constant TOTAL_WEIGHT_BASIS_POINTS = 10000; // 100% in basis points
     
-    // ZiG backing components weights (in basis points for precision)
+    // Legacy constants for backward compatibility (deprecated)
     uint256 public constant BTC_WEIGHT = 120; // 0.12 -> 1200 basis points
     uint256 public constant ETH_WEIGHT = 90;  // 0.09 -> 900 basis points
     uint256 public constant BNB_WEIGHT = 30;  // 0.03 -> 300 basis points
@@ -109,10 +120,89 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     event BandOracleSet(string indexed asset, address indexed oracle);
     event EmergencyOracleSet(address indexed oracle, bool status);
     event EmergencyPriceSet(string indexed asset, uint256 price);
+    event DaoAddressSet(address indexed dao);
+    event AssetWeightsUpdated(string indexed category, string[] symbols, uint256[] weights);
+    
+    modifier onlyDao() {
+        require(msg.sender == dao, "OracleHub: Only DAO can call this function");
+        _;
+    }
     
     constructor(address initialOwner) Ownable(initialOwner) {
         authorizedOracles[initialOwner] = true;
         emergencyOracles[initialOwner] = true;
+        
+        // Initialize with default crypto assets and weights
+        cryptoSymbols = ["BTCUSD", "ETHUSD", "BNBUSD", "XRPUSD", "SOLUSD"];
+        cryptoWeights = [1200, 900, 300, 300, 300]; // 12%, 9%, 3%, 3%, 3%
+        
+        // Initialize with default metal assets and weights
+        metalSymbols = ["XAUUSD", "XPTUSD", "XPDUSD", "XAGUSD"];
+        metalWeights = [2000, 1000, 600, 400]; // 20%, 10%, 6%, 4%
+        
+        // Initialize with default forex assets and weights
+        forexSymbols = ["EURUSD", "GBPUSD", "USDZAR", "USDJPY", "USDCHF", "USDCNH"];
+        forexWeights = [750, 600, 600, 300, 300, 450]; // 7.5%, 6%, 6%, 3%, 3%, 4.5%
+    }
+
+    // ======================== DAO MANAGEMENT ======================== //
+    
+    function setDaoAddress(address _dao) external onlyOwner {
+        require(_dao != address(0), "Invalid DAO address");
+        dao = _dao;
+        emit DaoAddressSet(_dao);
+    }
+    
+    function setAssetWeightsAndSymbols(
+        string[] calldata symbols,
+        uint256[] calldata weights,
+        string calldata category
+    ) external onlyDao {
+        require(symbols.length == weights.length, "Arrays length mismatch");
+        require(symbols.length > 0, "Must have at least one asset");
+        require(symbols.length <= 20, "Too many assets");
+        
+        // Validate weights sum to 100%
+        uint256 totalWeight = 0;
+        for (uint256 i = 0; i < weights.length; i++) {
+            require(weights[i] > 0, "Weight must be positive");
+            totalWeight += weights[i];
+        }
+        require(totalWeight == TOTAL_WEIGHT_BASIS_POINTS, "Weights must sum to 100%");
+        
+        // Validate symbols are not empty
+        for (uint256 i = 0; i < symbols.length; i++) {
+            require(bytes(symbols[i]).length > 0, "Symbol cannot be empty");
+        }
+        
+        // Update storage based on category
+        if (keccak256(bytes(category)) == keccak256(bytes("crypto"))) {
+            cryptoSymbols = symbols;
+            cryptoWeights = weights;
+        } else if (keccak256(bytes(category)) == keccak256(bytes("metal"))) {
+            metalSymbols = symbols;
+            metalWeights = weights;
+        } else if (keccak256(bytes(category)) == keccak256(bytes("forex"))) {
+            forexSymbols = symbols;
+            forexWeights = weights;
+        } else {
+            revert("Invalid category");
+        }
+        
+        emit AssetWeightsUpdated(category, symbols, weights);
+    }
+    
+    // Getter functions for current weights and symbols
+    function getCryptoAssets() external view returns (string[] memory, uint256[] memory) {
+        return (cryptoSymbols, cryptoWeights);
+    }
+    
+    function getMetalAssets() external view returns (string[] memory, uint256[] memory) {
+        return (metalSymbols, metalWeights);
+    }
+    
+    function getForexAssets() external view returns (string[] memory, uint256[] memory) {
+        return (forexSymbols, forexWeights);
     }
 
     // ======================== ORACLE INTEGRATIONS ======================== //
@@ -390,10 +480,10 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     // ======================== ZIG PRICE CALCULATION ======================== //
     
     /**
-     * @dev Calculate ZiG backing value using C + M + F formulas with enhanced precision
-     * C = 0.12*BTCUSD/1000 + 0.09*ETHUSD/100 + 0.03*BNBUSD + 0.03*XRPUSD*10 + 0.03*SOLUSD
-     * M = 0.20*XAUUSD + 0.10*XPTUSD + 0.06*XPDUSD + 0.04*XAGUSD
-     * F = 0.075*EURUSD + 0.06*GBPUSD + 0.06/USDZAR + 0.03/USDJPY + 0.03/USDCHF + 0.045/USDCNH
+     * @dev Calculate ZiG backing value using C + M + F formulas with DAO-controlled weights
+     * C = Sum of (cryptoWeights[i] * cryptoPrices[i]) / 10000
+     * M = Sum of (metalWeights[i] * metalPrices[i]) / 10000  
+     * F = Sum of (forexWeights[i] * forexPrices[i]) / 10000
      */
     function calculateZiGPrice() external view returns (uint256) {
         uint256 C = calculateCryptoComponent();
@@ -404,52 +494,58 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     }
     
     function calculateCryptoComponent() public view returns (uint256) {
-        uint256 btcPrice = getPriceWithFallback("BTCUSD", "crypto");
-        uint256 ethPrice = getPriceWithFallback("ETHUSD", "crypto");
-        uint256 bnbPrice = getPriceWithFallback("BNBUSD", "crypto");
-        uint256 xrpPrice = getPriceWithFallback("XRPUSD", "crypto");
-        uint256 solPrice = getPriceWithFallback("SOLUSD", "crypto");
+        uint256 total = 0;
         
-        // Using basis points for precise calculations
-        uint256 btc = (btcPrice * BTC_WEIGHT) / 10000 / 1000; // 0.12/1000
-        uint256 eth = (ethPrice * ETH_WEIGHT) / 10000 / 100;   // 0.09/100
-        uint256 bnb = (bnbPrice * BNB_WEIGHT) / 10000;         // 0.03
-        uint256 xrp = (xrpPrice * XRP_WEIGHT) / 10000 * 10;    // 0.03*10
-        uint256 sol = (solPrice * SOL_WEIGHT) / 10000;         // 0.03
+        for (uint256 i = 0; i < cryptoSymbols.length; i++) {
+            uint256 price = getPriceWithFallback(cryptoSymbols[i], "crypto");
+            uint256 weight = cryptoWeights[i];
+            
+            // Apply special scaling for BTC and ETH as per original formula
+            if (keccak256(bytes(cryptoSymbols[i])) == keccak256(bytes("BTCUSD"))) {
+                total += (price * weight) / 10000 / 1000; // BTC: divide by 1000
+            } else if (keccak256(bytes(cryptoSymbols[i])) == keccak256(bytes("ETHUSD"))) {
+                total += (price * weight) / 10000 / 100;   // ETH: divide by 100
+            } else if (keccak256(bytes(cryptoSymbols[i])) == keccak256(bytes("XRPUSD"))) {
+                total += (price * weight) / 10000 * 10;    // XRP: multiply by 10
+            } else {
+                total += (price * weight) / 10000;          // Others: normal scaling
+            }
+        }
         
-        return btc + eth + bnb + xrp + sol;
+        return total;
     }
     
     function calculateMetalComponent() public view returns (uint256) {
-        uint256 xauPrice = getPriceWithFallback("XAUUSD", "metal");
-        uint256 xptPrice = getPriceWithFallback("XPTUSD", "metal");
-        uint256 xpdPrice = getPriceWithFallback("XPDUSD", "metal");
-        uint256 xagPrice = getPriceWithFallback("XAGUSD", "metal");
+        uint256 total = 0;
         
-        uint256 xau = (xauPrice * XAU_WEIGHT) / 10000;  // 0.20
-        uint256 xpt = (xptPrice * XPT_WEIGHT) / 10000;  // 0.10
-        uint256 xpd = (xpdPrice * XPD_WEIGHT) / 10000;  // 0.06
-        uint256 xag = (xagPrice * XAG_WEIGHT) / 10000;  // 0.04
+        for (uint256 i = 0; i < metalSymbols.length; i++) {
+            uint256 price = getPriceWithFallback(metalSymbols[i], "metal");
+            uint256 weight = metalWeights[i];
+            total += (price * weight) / 10000;
+        }
         
-        return xau + xpt + xpd + xag;
+        return total;
     }
     
     function calculateForexComponent() public view returns (uint256) {
-        uint256 eurPrice = getPriceWithFallback("EURUSD", "forex");
-        uint256 gbpPrice = getPriceWithFallback("GBPUSD", "forex");
-        uint256 zarPrice = getPriceWithFallback("USDZAR", "forex");
-        uint256 jpyPrice = getPriceWithFallback("USDJPY", "forex");
-        uint256 chfPrice = getPriceWithFallback("USDCHF", "forex");
-        uint256 cnhPrice = getPriceWithFallback("USDCNH", "forex");
+        uint256 total = 0;
         
-        uint256 eur = (eurPrice * EUR_WEIGHT) / 10000;                          // 0.075
-        uint256 gbp = (gbpPrice * GBP_WEIGHT) / 10000;                          // 0.06
-        uint256 zar = (PRECISION * ZAR_WEIGHT) / (zarPrice * 10000);            // 0.06/USDZAR
-        uint256 jpy = (PRECISION * JPY_WEIGHT) / (jpyPrice * 10000);            // 0.03/USDJPY
-        uint256 chf = (PRECISION * CHF_WEIGHT) / (chfPrice * 10000);            // 0.03/USDCHF
-        uint256 cnh = (PRECISION * CNH_WEIGHT) / (cnhPrice * 10000);            // 0.045/USDCNH
+        for (uint256 i = 0; i < forexSymbols.length; i++) {
+            uint256 price = getPriceWithFallback(forexSymbols[i], "forex");
+            uint256 weight = forexWeights[i];
+            
+            // Apply inverse scaling for forex pairs (divide by price)
+            if (keccak256(bytes(forexSymbols[i])) == keccak256(bytes("USDZAR")) ||
+                keccak256(bytes(forexSymbols[i])) == keccak256(bytes("USDJPY")) ||
+                keccak256(bytes(forexSymbols[i])) == keccak256(bytes("USDCHF")) ||
+                keccak256(bytes(forexSymbols[i])) == keccak256(bytes("USDCNH"))) {
+                total += (PRECISION * weight) / (price * 10000);
+            } else {
+                total += (price * weight) / 10000;
+            }
+        }
         
-        return eur + gbp + zar + jpy + chf + cnh;
+        return total;
     }
 
     // ======================== UTILITY FUNCTIONS ======================== //
@@ -555,23 +651,19 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
         uint256 validForexFeeds,
         uint256 totalFeeds
     ) {
-        string[5] memory cryptoAssets = ["BTCUSD", "ETHUSD", "BNBUSD", "XRPUSD", "SOLUSD"];
-        string[4] memory metalAssets = ["XAUUSD", "XPTUSD", "XPDUSD", "XAGUSD"];
-        string[6] memory forexAssets = ["EURUSD", "GBPUSD", "USDZAR", "USDJPY", "USDCHF", "USDCNH"];
-        
-        for (uint256 i = 0; i < cryptoAssets.length; i++) {
-            if (_isPriceValid(cryptoAssets[i], cryptoPrices)) validCryptoFeeds++;
+        for (uint256 i = 0; i < cryptoSymbols.length; i++) {
+            if (_isPriceValid(cryptoSymbols[i], cryptoPrices)) validCryptoFeeds++;
         }
         
-        for (uint256 i = 0; i < metalAssets.length; i++) {
-            if (_isPriceValid(metalAssets[i], metalPrices)) validMetalFeeds++;
+        for (uint256 i = 0; i < metalSymbols.length; i++) {
+            if (_isPriceValid(metalSymbols[i], metalPrices)) validMetalFeeds++;
         }
         
-        for (uint256 i = 0; i < forexAssets.length; i++) {
-            if (_isPriceValid(forexAssets[i], forexPrices)) validForexFeeds++;
+        for (uint256 i = 0; i < forexSymbols.length; i++) {
+            if (_isPriceValid(forexSymbols[i], forexPrices)) validForexFeeds++;
         }
         
-        totalFeeds = cryptoAssets.length + metalAssets.length + forexAssets.length;
+        totalFeeds = cryptoSymbols.length + metalSymbols.length + forexSymbols.length;
     }
 
     // ======================== ADMIN FUNCTIONS ======================== //

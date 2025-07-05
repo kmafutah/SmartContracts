@@ -1,0 +1,90 @@
+{
+  "category": "cultural",
+  "count": 5,
+  "metadata": [
+    "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural",
+    "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural",
+    "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural",
+    "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural",
+    "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural"
+  ],
+  "imageUrls": [
+    "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural",
+    "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural",
+    "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural",
+    "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural",
+    "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural"
+  ],
+  "names": [
+    "ZiG Cultural Heritage #1",
+    "ZiG Cultural Heritage #2",
+    "ZiG Cultural Heritage #3",
+    "ZiG Cultural Heritage #4",
+    "ZiG Cultural Heritage #5"
+  ],
+  "descriptions": [
+    "A unique cultural heritage NFT representing African traditions and values",
+    "A unique cultural heritage NFT representing African traditions and values",
+    "A unique cultural heritage NFT representing African traditions and values",
+    "A unique cultural heritage NFT representing African traditions and values",
+    "A unique cultural heritage NFT representing African traditions and values"
+  ],
+  "attributes": [
+    [
+      "Category: Cultural",
+      "Rarity: Common",
+      "Heritage: Traditional",
+      "Token ID: 1",
+      "Mint Date: 1751596436"
+    ],
+    [
+      "Category: Cultural",
+      "Rarity: Common",
+      "Heritage: Traditional",
+      "Token ID: 2",
+      "Mint Date: 1751596436"
+    ],
+    [
+      "Category: Cultural",
+      "Rarity: Rare",
+      "Heritage: Traditional",
+      "Token ID: 3",
+      "Mint Date: 1751596436"
+    ],
+    [
+      "Category: Cultural",
+      "Rarity: Common",
+      "Heritage: Traditional",
+      "Token ID: 4",
+      "Mint Date: 1751596436"
+    ],
+    [
+      "Category: Cultural",
+      "Rarity: Common",
+      "Heritage: Traditional",
+      "Token ID: 5",
+      "Mint Date: 1751596436"
+    ]
+  ],
+  "rarities": [
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "isLimited": [
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "categories": [
+    "cultural",
+    "cultural",
+    "cultural",
+    "cultural",
+    "cultural"
+  ]
+}
