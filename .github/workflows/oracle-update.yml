@@ -31,4 +31,5 @@ jobs:
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
         run: |
           cd contracts/ZiGEcocash
+          ls -al
           python update_oracle.py
