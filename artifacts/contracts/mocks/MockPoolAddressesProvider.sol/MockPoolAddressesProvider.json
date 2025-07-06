@@ -1,0 +1,48 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "MockPoolAddressesProvider",
+  "sourceName": "contracts/mocks/MockPoolAddressesProvider.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_pool",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "getPool",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "pool",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x608034606f57601f61015938819003918201601f19168301916001600160401b03831184841017607457808492602094604052833981010312606f57516001600160a01b03811690819003606f57600080546001600160a01b03191691909117905560405160ce908161008b8239f35b600080fd5b634e487b7160e01b600052604160045260246000fdfe6080806040526004361015601257600080fd5b60003560e01c908163026b1d5f14606957506316f0115b14603257600080fd5b346064576000366003190112606457602073ffffffffffffffffffffffffffffffffffffffff60005416604051908152f35b600080fd5b34606457600036600319011260645760209073ffffffffffffffffffffffffffffffffffffffff600054168152f3fea2646970667358221220ce510f9c18a7b9b86ae3ae520c0ab28dc488876f07839c3b176759c3386f53ba64736f6c634300081d0033",
+  "deployedBytecode": "0x6080806040526004361015601257600080fd5b60003560e01c908163026b1d5f14606957506316f0115b14603257600080fd5b346064576000366003190112606457602073ffffffffffffffffffffffffffffffffffffffff60005416604051908152f35b600080fd5b34606457600036600319011260645760209073ffffffffffffffffffffffffffffffffffffffff600054168152f3fea2646970667358221220ce510f9c18a7b9b86ae3ae520c0ab28dc488876f07839c3b176759c3386f53ba64736f6c634300081d0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "StrategyIds",
+  "sourceName": "contracts/core/StrategyIds.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea2646970667358221220509a3693acb2aba08812e619e4c34b41c8e62d64490f89ed58b9b2686c3eb10d64736f6c634300081d0033",
+  "deployedBytecode": "0x600080fdfea2646970667358221220509a3693acb2aba08812e619e4c34b41c8e62d64490f89ed58b9b2686c3eb10d64736f6c634300081d0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}
