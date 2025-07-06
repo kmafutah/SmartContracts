@@ -3,6 +3,10 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   
+  // Base path configuration for production deployments
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
+  assetPrefix: process.env.NEXT_PUBLIC_ASSET_PREFIX || '',
+  
   // Security headers
   async headers() {
     return [
@@ -34,6 +38,7 @@ const nextConfig = {
   images: {
     domains: ['localhost'],
     formats: ['image/webp', 'image/avif'],
+    unoptimized: process.env.NODE_ENV === 'production',
   },
 
   // Experimental features
@@ -130,6 +135,12 @@ const nextConfig = {
     '@walletconnect/ethereum-provider',
     '@reown/appkit'
   ],
+
+  // Output configuration for static export
+  output: 'standalone',
+  
+  // Trailing slash configuration
+  trailingSlash: false,
 };
 
 module.exports = nextConfig; 
