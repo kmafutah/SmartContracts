@@ -1,0 +1,33 @@
+{
+  "name": "ZiG Cultural Heritage #9",
+  "description": "A unique cultural heritage NFT representing African traditions and values",
+  "image": "https://via.placeholder.com/500x500/FFD700/FFFFFF?text=ZiG+cultural",
+  "external_url": "https://zigeocash.com",
+  "attributes": [
+    {
+      "trait_type": "Category",
+      "value": "Cultural"
+    },
+    {
+      "trait_type": "Rarity",
+      "value": "Common"
+    },
+    {
+      "trait_type": "Heritage",
+      "value": "Traditional"
+    },
+    {
+      "trait_type": "Token ID",
+      "value": "9",
+      "display_type": "number"
+    },
+    {
+      "trait_type": "Mint Date",
+      "value": 1751596350,
+      "display_type": "date"
+    }
+  ],
+  "background_color": "#FFD700",
+  "animation_url": null,
+  "youtube_url": null
+}

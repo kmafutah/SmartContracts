@@ -1,9 +1,10 @@
+# Original content you provided:
 name: Oracle Updater
 
 on:
   schedule:
     - cron: '*/15 * * * *'  # Every 15 minutes (UTC)
-  workflow_dispatch:       # Allow manual runs
+  workflow_dispatch:      # Allow manual runs
 
 jobs:
   update-oracle:

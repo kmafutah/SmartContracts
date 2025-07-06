@@ -1,0 +1,17 @@
+{
+  "name": "ZiGT Token",
+  "symbol": "ZiGT",
+  "decimals": 18,
+  "description": "ZiGT is a stablecoin token pegged to gold and designed to ensure secure and stable transactions within the ZiG ecosystem. It serves as a bridge for cross-chain payments, asset-backed finance, and decentralized governance.",
+  "website": "https://zig.africa/token/zigt",
+  "image": "ipfs://YOUR_IMAGE_CID_HERE",
+  "explorer": "https://zkevm.polygonscan.com/token/0xEbcF9FF0868F57F08d86e6a94889A0DECB99D43b",
+  "status": "active",
+  "id": "zigt-token",
+  "links": {
+    "twitter": "https://twitter.com/ZiGT",
+    "github": "https://github.com/ZiGT",
+    "discord": "https://discord.com/invite/ZiGT",
+    "telegram": "https://t.me/ZiGT"
+  }
+}

@@ -31,16 +31,25 @@ contract ZiGGovernance is ERC20Votes, CCIPReceiver {
     uint256 public constant MIN_PROPOSAL_THRESHOLD = 1000e18;
     uint256 public constant VOTING_PERIOD = 3 days;
 
+    address public reserve;
+    address public bondingCurve;
+    address public dao;
+
+    modifier onlyDAO() {
+        require(msg.sender == dao, "Only DAO can call");
+        _;
+    }
+
     event ProposalCreated(uint256 indexed proposalId);
     event VoteCast(address indexed voter, uint256 proposalId, bool support);
     event ProposalExecuted(uint256 indexed proposalId);
     event MessageReceived(address indexed sender, bytes data);
 
-    constructor(address router, string memory name, string memory symbol, string memory version) 
+    constructor(address router, string memory name, string memory symbol, string memory version, address _dao) 
         ERC20(name, symbol) 
         EIP712(name, version) 
         CCIPReceiver(router) {
-        // Constructor logic if needed
+        dao = _dao;
     }
 
     function _ccipReceive(Client.Any2EVMMessage memory message) internal override {
@@ -100,5 +109,29 @@ contract ZiGGovernance is ERC20Votes, CCIPReceiver {
 
         proposal.executed = true;
         emit ProposalExecuted(proposalId);
+    }
+
+    function mint(address to, uint256 amount) external onlyDAO {
+        _mint(to, amount);
+    }
+
+    function burn(address from, uint256 amount) external onlyDAO {
+        _burn(from, amount);
+    }
+
+    function setReserve(address _reserve) external onlyDAO {
+        reserve = _reserve;
+    }
+    function setBondingCurve(address _curve) external onlyDAO {
+        bondingCurve = _curve;
+    }
+
+    /// @notice Returns all proposals
+    function getProposals() public view returns (Proposal[] memory) {
+        Proposal[] memory allProposals = new Proposal[](proposalCount);
+        for (uint256 i = 0; i < proposalCount; i++) {
+            allProposals[i] = proposals[i + 1];
+        }
+        return allProposals;
     }
 }

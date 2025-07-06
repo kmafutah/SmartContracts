@@ -115,6 +115,81 @@ function calculateReparationShare(address user) public view returns (uint256) {
    - ZiGT with cross-chain mint/burn
    - ReparationsModel with EthicalGuard
    - ZiGOracleHub with multi-source feeds
+```console 
+   $ npx hardhat run scripts/deploy-missing-oracles.js --network polygon_zkevm
+    You 🔧 Deploying Missing Oracle Contracts...
+    Deploying with account: 0x9b13A4ddEd17053CAE4eC3B846eb890277D9972a
+    📄 Loaded existing deployment addresses
+
+    📦 Deploying FeedRegistry...
+    ✅ FeedRegistry deployed to: 0x4373490725f6eb4388B7c82101dCFdb92442346B
+
+    📦 Deploying BandFeedRegistry...
+    ✅ BandFeedRegistry deployed to: 0x327ac64F704c4Eb23E027bD9590e7a8d35BB3252
+
+    📦 Deploying LiveBandFeed...
+    ✅ LiveBandFeed deployed to: 0x282aa33ABD5535589AaF33203dCEb0A6710bAF13
+
+    📡 Fetching live prices from APIs...
+    🔧 Setting real-time prices in LiveBandFeed...
+    ✅ Set BTCUSD price to $105381
+    ✅ Set ETHUSD price to $2435.51
+    ✅ Set BNBUSD price to $641.13
+    ✅ Set XAUUSD price to $3301.9646689780416
+    ✅ Set USDZAR price to $17.753
+    ✅ Set EURUSD price to $0.86269
+    ✅ Set GBPUSD price to $0.735301
+    ✅ Set USDCHF price to $0.808203
+    ✅ Set USDJPY price to $145.04964286
+
+    📦 Deploying CustomChainlinkOracle contracts...
+    ✅ Deployed BTCUSD oracle at 0x77ce72463915896bfCabf6A97eaAD427181E6E0e with price $105381
+    ✅ Deployed ETHUSD oracle at 0x911B58b36fC6491e158E893A8ecd3174d6c4a124 with price $2435.51
+    ✅ Deployed BNBUSD oracle at 0x992084C22F2a7a952FC439838ffcC535af48dBE0 with price $641.13
+    ✅ Deployed XAUUSD oracle at 0xe219282088048fDFb96356552C93ae8974503b98 with price $3301.9646689780416
+    ✅ Deployed USDZAR oracle at 0x8e6411b6391828A25DE056771d0F3FF41D3De695 with price $17.753
+    ✅ Deployed EURUSD oracle at 0x1A7Da58C3b21D1F6cB3385B7683d9c014373Ac19 with price $0.86269
+    ✅ Deployed GBPUSD oracle at 0xb7d2c6dcbae7D2E935EDA0c584143930156A7c9e with price $0.735301
+    ✅ Deployed USDCHF oracle at 0x21C0d4b2765Bd6985B6522518d630C5d428Ef4FD with price $0.808203
+    ✅ Deployed USDJPY oracle at 0xBcEf8151c23B74415EB3f3e547681B0145E53A02 with price $145.04964286
+
+    📦 Deploying MultiOracle...
+    ✅ MultiOracle deployed to: 0x0E59b6dCe5Bac04505Fb576A307a5289598Ea381
+    ✅ Set BTCUSD in MultiOracle to $105381
+    ✅ Set ETHUSD in MultiOracle to $2435.51
+    ✅ Set BNBUSD in MultiOracle to $641.13
+    ✅ Set XAUUSD in MultiOracle to $3301.9646689780416
+    ✅ Set USDZAR in MultiOracle to $17.753
+    ✅ Set EURUSD in MultiOracle to $0.86269
+    ✅ Set GBPUSD in MultiOracle to $0.735301
+    ✅ Set USDCHF in MultiOracle to $0.808203
+    ✅ Set USDJPY in MultiOracle to $145.04964286
+
+    🔧 Configuring ZiGOracleHub with new oracles...
+    ✅ Authorized deployer as oracle
+    ✅ Set token oracles for ZiG and ZiGT
+    ✅ Set chainlink feed for BTCUSD
+    ✅ Set chainlink feed for ETHUSD
+    ✅ Set chainlink feed for BNBUSD
+    ✅ Set chainlink feed for XAUUSD
+    ✅ Set chainlink feed for USDZAR
+    ✅ Set chainlink feed for EURUSD
+    ✅ Set chainlink feed for GBPUSD
+    ✅ Set chainlink feed for USDCHF
+    ✅ Set chainlink feed for USDJPY
+
+    🔧 Configuring Vault...
+    ✅ ZiG is already supported collateral
+    📄 Updated deployment addresses saved
+
+    🎉 Oracle deployment completed successfully!
+
+    📋 New Contract Addresses:
+    - FeedRegistry: 0x4373490725f6eb4388B7c82101dCFdb92442346B
+    - BandFeedRegistry: 0x327ac64F704c4Eb23E027bD9590e7a8d35BB3252
+    - LiveBandFeed: 0x282aa33ABD5535589AaF33203dCEb0A6710bAF13
+    - MultiOracle: 0x0E59b6dCe5Bac04505Fb576A307a5289598Ea381
+```
    - BackingVault with time-locked withdrawals
 
 2. **Phase 2: Identity & Governance (3-6 months)**

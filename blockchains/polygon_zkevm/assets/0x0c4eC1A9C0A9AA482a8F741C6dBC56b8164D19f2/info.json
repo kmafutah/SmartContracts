@@ -1,0 +1,16 @@
+{
+  "name": "SoulReparationNFT",
+  "symbol": "SRNFT",
+  "decimals": 0,
+  "description": "SoulReparationNFT is a soulbound NFT representing Pan-African reparations, ancestral heritage, and immutable identity on-chain. It is non-transferable and backed by the ZiG ecosystem for ethical restoration and community healing.",
+  "website": "https://zig.africa/nft/soulreparation",
+  "image": "ipfs://YOUR_IMAGE_CID_HERE",
+  "status": "active",
+  "id": "soulreparation-nft",
+  "tags": ["identity", "reparation", "soulbound", "pan-african", "zig"],
+  "links": {
+    "twitter": "https://twitter.com/zig_africa",
+    "github": "https://github.com/zig-africa",
+    "telegram": "https://t.me/zig_africa"
+  }
+}

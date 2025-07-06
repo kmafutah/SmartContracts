@@ -1,0 +1,9 @@
+{
+  "utilityToken": "0x2811695429BA2De2bF659bF7808e864cc73F2394",
+  "oracleHub": "0x789099C062B60280CF4dDdE219890FF351262088",
+  "dao": "0x1946BD240c5178a9740Ff42A5699281483AAf7c1",
+  "regionalStablecoins": "0xd6366bd5c9956740bd1D686A03A673f5df23cE1D",
+  "deployer": "0x9b13A4ddEd17053CAE4eC3B846eb890277D9972a",
+  "network": "polygon-zkevm",
+  "timestamp": "2025-07-05T04:09:50.923Z"
+}

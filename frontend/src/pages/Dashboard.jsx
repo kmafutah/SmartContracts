@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import AutoExecutor from '../components/AutoExecutor';
 import ZiGTDashboard from '../components/ZiGTDashboard';
 import { useContract } from '../hooks/useContract';
+import useZiGTData from '../hooks/useZiGTData';
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('pmm');
@@ -16,7 +17,10 @@ const Dashboard = () => {
     bandFeedRegistryContract
   } = useContract();
 
+  const { totalSupply, valueUSD } = useZiGTData();
+
   return (
+    
     <div className="min-h-screen bg-gradient-to-br from-gray-100 to-blue-50 p-8 text-gray-800">
       <div className="max-w-6xl mx-auto">
         <header className="mb-8 text-center">
@@ -43,7 +47,11 @@ const Dashboard = () => {
             ZiGT Ecosystem
           </button>
         </div>
-
+    <div>
+      <h2>🌍 ZiGT Ecosystem Overview</h2>
+      <p>Total Supply: {totalSupply} ₥MYRT</p>
+      <p>Token Value (USD): ${valueUSD}</p>
+    </div>
         {/* Wallet Connection (if not connected) */}
         {!isConnected && (
           <div className="text-center mb-8">
@@ -75,6 +83,8 @@ const Dashboard = () => {
         </section>
       </div>
     </div>
+
+
   );
 };
 

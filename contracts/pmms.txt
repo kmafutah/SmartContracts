@@ -1,431 +1,3 @@
----Path and files name: pmms/mocks/MockQuoter.sol
----Filename: MockQuoter.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-contract MockQuoter {
-    uint256 public constant RATE = 1e18; // 1:1 for testing
-    function quoteExactInputSingle(
-        address tokenIn,
-        address tokenOut,
-        uint24 fee,
-        uint256 amountIn,
-        uint160 sqrtPriceLimitX96
-    ) external view returns (uint256 amountOut) {
-        return (amountIn * RATE) / 1e18;
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockFlashloanExecutor.sol
----Filename: MockFlashloanExecutor.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-
-contract MockFlashloanExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable {
-    address public strategyExecutor;
-
-    function initialize(address _owner, address _strategyExecutor) external initializer {
-        __Ownable_init(_owner); // Pass the owner explicitly
-        __UUPSUpgradeable_init();
-
-        strategyExecutor = _strategyExecutor;
-    }
-
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
-    function executeOperation(
-        address[] calldata assets,
-        uint256[] calldata amounts,
-        uint256[] calldata premiums,
-        address initiator,
-        bytes calldata params
-    ) external returns (bool) {
-        return true;
-    }
-}
----File Content End---
-
----Path and files name: pmms/mocks/MockPool.sol
----Filename: MockPool.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@aave/core-v3/contracts/flashloan/interfaces/IFlashLoanSimpleReceiver.sol";
-
-contract MockPool {
-    function flashLoanSimple(
-        address receiverAddress,
-        address asset,
-        uint256 amount,
-        bytes calldata params,
-        uint16 /* referralCode */
-    ) external {
-        IERC20 token = IERC20(asset);
-        token.transfer(receiverAddress, amount); // Simulate loan
-        require(
-            IFlashLoanSimpleReceiver(receiverAddress).executeOperation(
-                asset,
-                amount,
-                0,
-                msg.sender,
-                params
-            ),
-            "Flash loan execution failed"
-        );
-        token.transferFrom(receiverAddress, address(this), amount); // Simulate repayment
-    }
-
-    // Other Aave pool methods are NOT needed unless explicitly called
-}
----File Content End---
-
----Path and files name: pmms/mocks/MockConvexBooster.sol
----Filename: MockConvexBooster.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-contract MockConvexBooster {
-    function deposit(uint256 _pid, uint256 _amount, bool _stake) external returns (bool) {
-        return true;
-    }
-    function withdraw(uint256 _pid, uint256 _amount) external returns (bool) {
-        return true;
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockCurve3Pool.sol
----Filename: MockCurve3Pool.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "../interfaces/IRegistry.sol";
-
-contract MockCurve3Pool {
-    function get_dy(int128 i, int128 j, uint256 dx) external view returns (uint256 dy) {
-        return dx * 997 / 1000; // Simulate 0.3% fee
-    }
-
-    function exchange(int128 i, int128 j, uint256 dx, uint256 min_dy) external returns (uint256) {
-        uint256 dy = dx * 997 / 1000;
-        require(dy >= min_dy, "Insufficient output");
-        address tokenIn = i == 1 ? IRegistry(msg.sender).getAddress("USDC") : IRegistry(msg.sender).getAddress("USDT");
-        address tokenOut = j == 1 ? IRegistry(msg.sender).getAddress("USDC") : IRegistry(msg.sender).getAddress("USDT");
-        IERC20(tokenIn).transferFrom(msg.sender, address(this), dx);
-        IERC20(tokenOut).transfer(msg.sender, dy);
-        return dy;
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockERC20.sol
----Filename: MockERC20.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
-contract MockERC20 is ERC20 {
-    constructor(string memory name, string memory symbol) ERC20(name, symbol) {
-        _mint(msg.sender, 1_000_000 * 10**18); // Mint 1M tokens
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockUSDC.sol
----Filename: MockUSDC.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
-contract MockUSDC is ERC20 {
-    constructor() ERC20("Mock USDC", "USDC") {
-        _mint(msg.sender, 1_000_000 * 10**18);
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockUSDT.sol
----Filename: MockUSDT.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
-contract MockUSDT is ERC20 {
-    constructor() ERC20("Mock USDT", "USDT") {
-        _mint(msg.sender, 1_000_000 * 10**18);
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockGasOracle.sol
----Filename: MockGasOracle.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-contract MockGasOracle {
-    uint256 public gasPrice = 1000000000; // 1 gwei
-    function getGasPrice() external view returns (uint256) {
-        return gasPrice;
-    }
-    function setGasPrice(uint256 _gasPrice) external {
-        gasPrice = _gasPrice;
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockSwapRouter.sol
----Filename: MockSwapRouter.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-contract MockSwapRouter {
-    struct ExactInputSingleParams {
-        address tokenIn;
-        address tokenOut;
-        uint24 fee;
-        address recipient;
-        uint256 deadline;
-        uint256 amountIn;
-        uint256 amountOutMinimum;
-        uint160 sqrtPriceLimitX96;
-    }
-    uint256 public constant RATE = 1e18; // 1:1 for testing
-    function exactInputSingle(ExactInputSingleParams calldata params) external returns (uint256 amountOut) {
-        require(block.timestamp <= params.deadline, "Expired");
-        require(params.amountOutMinimum <= params.amountIn, "Insufficient output");
-        IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
-        IERC20(params.tokenOut).transfer(params.recipient, params.amountOutMinimum);
-        return params.amountOutMinimum;
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockAaveLendingPool.sol
----Filename: MockAaveLendingPool.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-contract MockAaveLendingPool {
-    mapping(address => mapping(address => uint256)) public deposits;
-    mapping(address => mapping(address => uint256)) public borrows;
-    function deposit(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external {
-        IERC20(asset).transferFrom(msg.sender, address(this), amount);
-        deposits[onBehalfOf][asset] += amount;
-    }
-    function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf) external {
-        require(deposits[onBehalfOf][asset] >= amount, "Insufficient collateral");
-        IERC20(asset).transfer(onBehalfOf, amount);
-        borrows[onBehalfOf][asset] += amount;
-    }
-    function repay(address asset, uint256 amount, uint256 rateMode, address onBehalfOf) external returns (uint256) {
-        IERC20(asset).transferFrom(msg.sender, address(this), amount);
-        borrows[onBehalfOf][asset] -= amount;
-        return amount;
-    }
-    function getUserAccountData(address user)
-        external
-        view
-        returns (
-            uint256 totalCollateralETH,
-            uint256 totalDebtETH,
-            uint256 availableBorrowsETH,
-            uint256 currentLiquidationThreshold,
-            uint256 ltv,
-            uint256 healthFactor
-        )
-    {
-        totalCollateralETH = deposits[user][address(0)] * 1e18;
-        totalDebtETH = borrows[user][address(0)] * 1e18;
-        availableBorrowsETH = (totalCollateralETH * 8000) / 10000 - totalDebtETH;
-        currentLiquidationThreshold = 8500;
-        ltv = 8000;
-        healthFactor = totalDebtETH == 0 ? type(uint256).max : (totalCollateralETH * 8500) / totalDebtETH;
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockIMABridge.sol
----Filename: MockIMABridge.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-contract MockIMABridge {
-    event MessageSent(address sender, address recipient, bytes data);
-    event MessageReceived(address sender, address recipient, bytes data);
-    function sendMessage(address recipient, bytes calldata data) external {
-        emit MessageSent(msg.sender, recipient, data);
-    }
-    function receiveMessage(address sender, bytes calldata data) external {
-        emit MessageReceived(sender, msg.sender, data);
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockRegistry.sol
----Filename: MockRegistry.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-contract MockRegistry {
-    mapping(string => address) private addresses;
-    mapping(string => address) private strategies;
-    address public nftFloorOracle;
-
-    function getAddress(string memory key) external view returns (address) {
-        return addresses[key]; // Returns address(0) if unset
-    }
-
-    function setAddress(string memory key, address value) external {
-        require(value != address(0), "Invalid address");
-        addresses[key] = value;
-    }
-
-    function getStrategy(string memory name) external view returns (address) {
-        return strategies[name];
-    }
-
-    function registerStrategy(string memory name, address strategyAddress) external {
-        strategies[name] = strategyAddress;
-    }
-
-    function deregisterStrategy(string memory name) external {
-        strategies[name] = address(0);
-    }
-
-    function setNftFloorOracle(address oracle) external {
-        nftFloorOracle = oracle;
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockCurve3PoolToken.sol
----Filename: MockCurve3PoolToken.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-contract MockCurve3PoolToken is ERC20 {
-    constructor(string memory name, string memory symbol) ERC20(name, symbol) {
-        _mint(msg.sender, 1_000_000 * 10**18);
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockUniswapV2Router.sol
----Filename: MockUniswapV2Router.sol
----File Content Start---
-// contracts/mocks/MockUniswapV2Router.sol
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-contract MockUniswapV2Router {
-    function swapExactTokensForTokens(
-        uint256 amountIn,
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external returns (uint256[] memory amounts) {
-        require(block.timestamp <= deadline, "Expired");
-        IERC20(path[0]).transferFrom(msg.sender, address(this), amountIn);
-        IERC20(path[path.length - 1]).transfer(to, amountOutMin);
-        amounts = new uint256[](path.length);
-        amounts[0] = amountIn;
-        amounts[path.length - 1] = amountOutMin;
-    }
-}
----File Content End---
-
----Path and files name: pmms/mocks/MockPoolAddressesProvider.sol
----Filename: MockPoolAddressesProvider.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-contract MockPoolAddressesProvider {
-    address public pool;
-
-    constructor(address _pool) {
-        pool = _pool;
-    }
-
-    function getPool() external view returns (address) {
-        return pool;
-    }
-}
----File Content End---
-
----Path and files name: pmms/mocks/MockUniswapV3Router.sol
----Filename: MockUniswapV3Router.sol
----File Content Start---
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-
-contract MockUniswapV3Router {
-    // Mock swap event
-    event Swap(
-        address indexed tokenIn,
-        address indexed tokenOut,
-        uint256 amountIn,
-        uint256 amountOut
-    );
-
-    // Mock exactInputSingle function
-    function exactInputSingle(
-        address tokenIn,
-        address tokenOut,
-        uint24 fee,
-        address recipient,
-        uint256 deadline,
-        uint256 amountIn,
-        uint256 amountOutMinimum,
-        uint160 sqrtPriceLimitX96
-    ) external returns (uint256 amountOut) {
-        require(block.timestamp <= deadline, "Transaction expired");
-        require(amountIn > 0, "Invalid amount");
-        // Simulate a 1:1 swap with 0.3% fee
-        amountOut = (amountIn * 997) / 1000;
-        emit Swap(tokenIn, tokenOut, amountIn, amountOut);
-        return amountOut;
-    }
-}---File Content End---
-
----Path and files name: pmms/mocks/MockCurvePool.sol
----Filename: MockCurvePool.sol
----File Content Start---
-// contracts/mocks/MockCurvePool.sol
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-contract MockCurvePool {
-    address public token0;
-    address public token1;
-    address public token2;
-    constructor(address _token0, address _token1, address _token2) {
-        token0 = _token0;
-        token1 = _token1;
-        token2 = _token2;
-    }
-    function add_liquidity(uint256[3] calldata amounts, uint256 min_mint_amount) external {
-        IERC20(token0).transferFrom(msg.sender, address(this), amounts[0]);
-        IERC20(token1).transferFrom(msg.sender, address(this), amounts[1]);
-        IERC20(token2).transferFrom(msg.sender, address(this), amounts[2]);
-    }
-    function exchange(int128 i, int128 j, uint256 dx, uint256 min_dy) external {
-        address tokenIn = i == 0 ? token0 : i == 1 ? token1 : token2;
-        address tokenOut = j == 0 ? token0 : j == 1 ? token1 : token2;
-        IERC20(tokenIn).transferFrom(msg.sender, address(this), dx);
-        IERC20(tokenOut).transfer(msg.sender, min_dy);
-    }
-}---File Content End---
-
 ---Path and files name: pmms/FlashloanExecutor.sol
 ---Filename: FlashloanExecutor.sol
 ---File Content Start---
@@ -438,7 +10,7 @@ import "@aave/core-v3/contracts/flashloan/base/FlashLoanSimpleReceiverBase.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract FlashloanExecutor is FlashLoanSimpleReceiverBase, Ownable {
+contract x_FlashloanExecutor is FlashLoanSimpleReceiverBase, Ownable {
     IRegistry public immutable registry;
     address public strategyExecutor;
 
@@ -503,7 +75,435 @@ contract FlashloanExecutor is FlashLoanSimpleReceiverBase, Ownable {
     }
 }---File Content End---
 
----Path and files name: pmms/ProfitMaximizerModularSystem.sol
+---Path and files name: pmms/contracts/mocks/MockQuoter.sol
+---Filename: MockQuoter.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+contract MockQuoter {
+    uint256 public constant RATE = 1e18; // 1:1 for testing
+    function quoteExactInputSingle(
+        address tokenIn,
+        address tokenOut,
+        uint24 fee,
+        uint256 amountIn,
+        uint160 sqrtPriceLimitX96
+    ) external view returns (uint256 amountOut) {
+        return (amountIn * RATE) / 1e18;
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockFlashloanExecutor.sol
+---Filename: MockFlashloanExecutor.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+
+contract MockFlashloanExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+    address public strategyExecutor;
+
+    function initialize(address _owner, address _strategyExecutor) external initializer {
+        __Ownable_init(_owner); // Pass the owner explicitly
+        __UUPSUpgradeable_init();
+
+        strategyExecutor = _strategyExecutor;
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    function executeOperation(
+        address[] calldata assets,
+        uint256[] calldata amounts,
+        uint256[] calldata premiums,
+        address initiator,
+        bytes calldata params
+    ) external returns (bool) {
+        return true;
+    }
+}
+---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockPool.sol
+---Filename: MockPool.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@aave/core-v3/contracts/flashloan/interfaces/IFlashLoanSimpleReceiver.sol";
+
+contract MockPool {
+    function flashLoanSimple(
+        address receiverAddress,
+        address asset,
+        uint256 amount,
+        bytes calldata params,
+        uint16 /* referralCode */
+    ) external {
+        IERC20 token = IERC20(asset);
+        token.transfer(receiverAddress, amount); // Simulate loan
+        require(
+            IFlashLoanSimpleReceiver(receiverAddress).executeOperation(
+                asset,
+                amount,
+                0,
+                msg.sender,
+                params
+            ),
+            "Flash loan execution failed"
+        );
+        token.transferFrom(receiverAddress, address(this), amount); // Simulate repayment
+    }
+
+    // Other Aave pool methods are NOT needed unless explicitly called
+}
+---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockConvexBooster.sol
+---Filename: MockConvexBooster.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+contract MockConvexBooster {
+    function deposit(uint256 _pid, uint256 _amount, bool _stake) external returns (bool) {
+        return true;
+    }
+    function withdraw(uint256 _pid, uint256 _amount) external returns (bool) {
+        return true;
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockCurve3Pool.sol
+---Filename: MockCurve3Pool.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "../interfaces/IRegistry.sol";
+
+contract MockCurve3Pool {
+    function get_dy(int128 i, int128 j, uint256 dx) external view returns (uint256 dy) {
+        return dx * 997 / 1000; // Simulate 0.3% fee
+    }
+
+    function exchange(int128 i, int128 j, uint256 dx, uint256 min_dy) external returns (uint256) {
+        uint256 dy = dx * 997 / 1000;
+        require(dy >= min_dy, "Insufficient output");
+        address tokenIn = i == 1 ? IRegistry(msg.sender).getAddress("USDC") : IRegistry(msg.sender).getAddress("USDT");
+        address tokenOut = j == 1 ? IRegistry(msg.sender).getAddress("USDC") : IRegistry(msg.sender).getAddress("USDT");
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), dx);
+        IERC20(tokenOut).transfer(msg.sender, dy);
+        return dy;
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockERC20.sol
+---Filename: MockERC20.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract MockERC20 is ERC20 {
+    constructor(string memory name, string memory symbol) ERC20(name, symbol) {
+        _mint(msg.sender, 1_000_000 * 10**18); // Mint 1M tokens
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockUSDC.sol
+---Filename: MockUSDC.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract MockUSDC is ERC20 {
+    constructor() ERC20("Mock USDC", "USDC") {
+        _mint(msg.sender, 1_000_000 * 10**18);
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockUSDT.sol
+---Filename: MockUSDT.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract MockUSDT is ERC20 {
+    constructor() ERC20("Mock USDT", "USDT") {
+        _mint(msg.sender, 1_000_000 * 10**18);
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockGasOracle.sol
+---Filename: MockGasOracle.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+contract MockGasOracle {
+    uint256 public gasPrice = 1000000000; // 1 gwei
+    function getGasPrice() external view returns (uint256) {
+        return gasPrice;
+    }
+    function setGasPrice(uint256 _gasPrice) external {
+        gasPrice = _gasPrice;
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockSwapRouter.sol
+---Filename: MockSwapRouter.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+contract MockSwapRouter {
+    struct ExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint24 fee;
+        address recipient;
+        uint256 deadline;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+        uint160 sqrtPriceLimitX96;
+    }
+    uint256 public constant RATE = 1e18; // 1:1 for testing
+    function exactInputSingle(ExactInputSingleParams calldata params) external returns (uint256 amountOut) {
+        require(block.timestamp <= params.deadline, "Expired");
+        require(params.amountOutMinimum <= params.amountIn, "Insufficient output");
+        IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
+        IERC20(params.tokenOut).transfer(params.recipient, params.amountOutMinimum);
+        return params.amountOutMinimum;
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockAaveLendingPool.sol
+---Filename: MockAaveLendingPool.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+contract MockAaveLendingPool {
+    mapping(address => mapping(address => uint256)) public deposits;
+    mapping(address => mapping(address => uint256)) public borrows;
+    function deposit(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external {
+        IERC20(asset).transferFrom(msg.sender, address(this), amount);
+        deposits[onBehalfOf][asset] += amount;
+    }
+    function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf) external {
+        require(deposits[onBehalfOf][asset] >= amount, "Insufficient collateral");
+        IERC20(asset).transfer(onBehalfOf, amount);
+        borrows[onBehalfOf][asset] += amount;
+    }
+    function repay(address asset, uint256 amount, uint256 rateMode, address onBehalfOf) external returns (uint256) {
+        IERC20(asset).transferFrom(msg.sender, address(this), amount);
+        borrows[onBehalfOf][asset] -= amount;
+        return amount;
+    }
+    function getUserAccountData(address user)
+        external
+        view
+        returns (
+            uint256 totalCollateralETH,
+            uint256 totalDebtETH,
+            uint256 availableBorrowsETH,
+            uint256 currentLiquidationThreshold,
+            uint256 ltv,
+            uint256 healthFactor
+        )
+    {
+        totalCollateralETH = deposits[user][address(0)] * 1e18;
+        totalDebtETH = borrows[user][address(0)] * 1e18;
+        availableBorrowsETH = (totalCollateralETH * 8000) / 10000 - totalDebtETH;
+        currentLiquidationThreshold = 8500;
+        ltv = 8000;
+        healthFactor = totalDebtETH == 0 ? type(uint256).max : (totalCollateralETH * 8500) / totalDebtETH;
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockIMABridge.sol
+---Filename: MockIMABridge.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+contract MockIMABridge {
+    event MessageSent(address sender, address recipient, bytes data);
+    event MessageReceived(address sender, address recipient, bytes data);
+    function sendMessage(address recipient, bytes calldata data) external {
+        emit MessageSent(msg.sender, recipient, data);
+    }
+    function receiveMessage(address sender, bytes calldata data) external {
+        emit MessageReceived(sender, msg.sender, data);
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockRegistry.sol
+---Filename: MockRegistry.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+contract MockRegistry {
+    mapping(string => address) private addresses;
+    mapping(string => address) private strategies;
+    address public nftFloorOracle;
+
+    function getAddress(string memory key) external view returns (address) {
+        return addresses[key]; // Returns address(0) if unset
+    }
+
+    function setAddress(string memory key, address value) external {
+        require(value != address(0), "Invalid address");
+        addresses[key] = value;
+    }
+
+    function getStrategy(string memory name) external view returns (address) {
+        return strategies[name];
+    }
+
+    function registerStrategy(string memory name, address strategyAddress) external {
+        strategies[name] = strategyAddress;
+    }
+
+    function deregisterStrategy(string memory name) external {
+        strategies[name] = address(0);
+    }
+
+    function setNftFloorOracle(address oracle) external {
+        nftFloorOracle = oracle;
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockCurve3PoolToken.sol
+---Filename: MockCurve3PoolToken.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+contract MockCurve3PoolToken is ERC20 {
+    constructor(string memory name, string memory symbol) ERC20(name, symbol) {
+        _mint(msg.sender, 1_000_000 * 10**18);
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockUniswapV2Router.sol
+---Filename: MockUniswapV2Router.sol
+---File Content Start---
+// contracts/mocks/MockUniswapV2Router.sol
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+contract MockUniswapV2Router {
+    function swapExactTokensForTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline
+    ) external returns (uint256[] memory amounts) {
+        require(block.timestamp <= deadline, "Expired");
+        IERC20(path[0]).transferFrom(msg.sender, address(this), amountIn);
+        IERC20(path[path.length - 1]).transfer(to, amountOutMin);
+        amounts = new uint256[](path.length);
+        amounts[0] = amountIn;
+        amounts[path.length - 1] = amountOutMin;
+    }
+}
+---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockPoolAddressesProvider.sol
+---Filename: MockPoolAddressesProvider.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+contract MockPoolAddressesProvider {
+    address public pool;
+
+    constructor(address _pool) {
+        pool = _pool;
+    }
+
+    function getPool() external view returns (address) {
+        return pool;
+    }
+}
+---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockUniswapV3Router.sol
+---Filename: MockUniswapV3Router.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+contract MockUniswapV3Router {
+    // Mock swap event
+    event Swap(
+        address indexed tokenIn,
+        address indexed tokenOut,
+        uint256 amountIn,
+        uint256 amountOut
+    );
+
+    // Mock exactInputSingle function
+    function exactInputSingle(
+        address tokenIn,
+        address tokenOut,
+        uint24 fee,
+        address recipient,
+        uint256 deadline,
+        uint256 amountIn,
+        uint256 amountOutMinimum,
+        uint160 sqrtPriceLimitX96
+    ) external returns (uint256 amountOut) {
+        require(block.timestamp <= deadline, "Transaction expired");
+        require(amountIn > 0, "Invalid amount");
+        // Simulate a 1:1 swap with 0.3% fee
+        amountOut = (amountIn * 997) / 1000;
+        emit Swap(tokenIn, tokenOut, amountIn, amountOut);
+        return amountOut;
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/mocks/MockCurvePool.sol
+---Filename: MockCurvePool.sol
+---File Content Start---
+// contracts/mocks/MockCurvePool.sol
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+contract MockCurvePool {
+    address public token0;
+    address public token1;
+    address public token2;
+    constructor(address _token0, address _token1, address _token2) {
+        token0 = _token0;
+        token1 = _token1;
+        token2 = _token2;
+    }
+    function add_liquidity(uint256[3] calldata amounts, uint256 min_mint_amount) external {
+        IERC20(token0).transferFrom(msg.sender, address(this), amounts[0]);
+        IERC20(token1).transferFrom(msg.sender, address(this), amounts[1]);
+        IERC20(token2).transferFrom(msg.sender, address(this), amounts[2]);
+    }
+    function exchange(int128 i, int128 j, uint256 dx, uint256 min_dy) external {
+        address tokenIn = i == 0 ? token0 : i == 1 ? token1 : token2;
+        address tokenOut = j == 0 ? token0 : j == 1 ? token1 : token2;
+        IERC20(tokenIn).transferFrom(msg.sender, address(this), dx);
+        IERC20(tokenOut).transfer(msg.sender, min_dy);
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/ProfitMaximizerModularSystem.sol
 ---Filename: ProfitMaximizerModularSystem.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -576,7 +576,7 @@ contract ProfitMaximizerModularSystem is Initializable, OwnableUpgradeable, UUPS
 }
 ---File Content End---
 
----Path and files name: pmms/core/FlashloanExecutor.sol
+---Path and files name: pmms/contracts/core/FlashloanExecutor.sol
 ---Filename: FlashloanExecutor.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -678,7 +678,7 @@ contract FlashloanExecutor is Initializable, UUPSUpgradeable, OwnableUpgradeable
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }---File Content End---
 
----Path and files name: pmms/core/DeFiStrategies.sol
+---Path and files name: pmms/contracts/core/DeFiStrategies.sol
 ---Filename: DeFiStrategies.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -717,7 +717,7 @@ contract DeFiStrategies {
         }
     }---File Content End---
 
----Path and files name: pmms/core/StrategyIds.sol
+---Path and files name: pmms/contracts/core/StrategyIds.sol
 ---Filename: StrategyIds.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -742,10 +742,11 @@ library StrategyIds {
     uint256 constant NFT_COLLATERAL_LIQUIDATION = 16;
     uint256 constant LIQUID_STAKING_TOKEN_ARBITRAGE = 17;
     uint256 constant FLASHLOAN_GAS_ARBITRAGE = 18;
+    uint256 constant ZIGT_ARBITRAGE = 19;
 }
 ---File Content End---
 
----Path and files name: pmms/core/StrategyExecutor.sol
+---Path and files name: pmms/contracts/core/StrategyExecutor.sol
 ---Filename: StrategyExecutor.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -829,7 +830,7 @@ contract StrategyExecutor is Initializable, OwnableUpgradeable, UUPSUpgradeable 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }---File Content End---
 
----Path and files name: pmms/core/Registry.sol
+---Path and files name: pmms/contracts/core/Registry.sol
 ---Filename: Registry.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -923,7 +924,7 @@ contract Registry is Initializable, IRegistry, OwnableUpgradeable, UUPSUpgradeab
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }---File Content End---
 
----Path and files name: pmms/core/StrategyRegistry.sol
+---Path and files name: pmms/contracts/core/StrategyRegistry.sol
 ---Filename: StrategyRegistry.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -952,7 +953,245 @@ contract StrategyRegistry {
 }
 ---File Content End---
 
----Path and files name: pmms/strategies/StrategyYieldLoop.sol
+---Path and files name: pmms/contracts/strategies/StrategyZiGTArbitrage.sol
+---Filename: StrategyZiGTArbitrage.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
+
+import "../interfaces/IStrategy.sol";
+import "../interfaces/IRegistry.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
+
+contract StrategyZiGTArbitrage is IStrategy, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+    using SafeERC20 for IERC20;
+
+    IRegistry public registry;
+    uint256 public slippageTolerance; // 50 = 0.5%
+    uint24 public poolFee; // 3000 = 0.3%
+    uint160 public sqrtPriceLimitX96;
+    
+    // Supported ZiGT token symbols
+    string[] private zigtSymbols = [
+        "ZiG-R", "ZiG-N", "ZiG-RG", "ZiG-KB", 
+        "ZiG-UB", "ZiG-SF", "ZiG-PC", "ZiG-MG",
+        "ZiG-SH", "ZiG-CD", "ZiG-KU", "ZiG-KD",
+        "ZiGT", "ZiG"
+    ];
+    
+    // Supported stablecoins and WETH
+    string[] private pairedTokens = ["USDC", "USDT", "DAI", "WETH"];
+    
+    event ZiGTArbitrageExecuted(
+        address indexed zigtToken,
+        address indexed pairedToken,
+        uint256 amountIn,
+        uint256 amountOut,
+        uint256 profit,
+        uint256 timestamp
+    );
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _registry) external initializer {        
+        require(_registry != address(0), "Invalid registry");
+        __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+        registry = IRegistry(_registry);
+        slippageTolerance = 50; // 0.5%
+        poolFee = 3000; // 0.3%
+        sqrtPriceLimitX96 = 0;
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    function name() external pure override returns (string memory) {
+        return "ZiGTArbitrage";
+    }
+
+    function checkOpportunity(address asset, uint256 amount)
+        external
+        view
+        override
+        returns (uint256 profit, bytes memory executionData)
+    {
+        // Check if the asset is a ZiGT token
+        if (!_isZiGToken(asset)) return (0, "");
+        
+        address uniswapRouter = registry.getAddress("UNISWAP_V3");
+        address quoter = registry.getAddress("UNISWAP_V3_QUOTER");
+        
+        if (uniswapRouter == address(0) || quoter == address(0)) {
+            return (0, "");
+        }
+
+        // Find best arbitrage opportunity across all paired tokens
+        for (uint i = 0; i < pairedTokens.length; i++) {
+            address pairedToken = registry.getAddress(pairedTokens[i]);
+            if (pairedToken == address(0)) continue;
+            
+            // Get direct swap quote (ZiGT -> Paired Token)
+            uint256 directOut = _getUniswapV3Quote(
+                quoter,
+                asset,
+                pairedToken,
+                amount
+            );
+            
+            // Get reverse swap quote (Paired Token -> ZiGT)
+            uint256 reverseOut = _getUniswapV3Quote(
+                quoter,
+                pairedToken,
+                asset,
+                directOut
+            );
+            
+            // Calculate potential profit
+            if (reverseOut > amount) {
+                uint256 potentialProfit = reverseOut - amount;
+                if (potentialProfit > profit) {
+                    profit = potentialProfit;
+                    executionData = abi.encode(pairedToken, directOut, reverseOut);
+                }
+            }
+        }
+    }
+
+    function execute(bytes memory executionData, uint256 amount, uint256 premium)
+        external
+        override
+        nonReentrant
+        returns (bool success, bytes memory result, uint256 profit)
+    {
+        (address pairedToken, uint256 expectedPairedOut, uint256 expectedZigtOut) = abi.decode(
+            executionData,
+            (address, uint256, uint256)
+        );
+        
+        address zigtToken = msg.sender;
+        address uniswapRouter = registry.getAddress("UNISWAP_V3");
+        require(uniswapRouter != address(0), "Uniswap router not set");
+        
+        // Swap ZiGT -> Paired Token
+        uint256 pairedOut = _executeSwap(
+            zigtToken,
+            pairedToken,
+            amount,
+            (expectedPairedOut * (10000 - slippageTolerance)) / 10000,
+            uniswapRouter
+        );
+        
+        // Swap Paired Token -> ZiGT
+        uint256 finalZigtAmount = _executeSwap(
+            pairedToken,
+            zigtToken,
+            pairedOut,
+            (expectedZigtOut * (10000 - slippageTolerance)) / 10000,
+            uniswapRouter
+        );
+        
+        // Calculate profit after premium
+        profit = finalZigtAmount > amount + premium ? finalZigtAmount - amount - premium : 0;
+        require(profit > 0, "Insufficient profit");
+
+        emit ZiGTArbitrageExecuted(
+            zigtToken,
+            pairedToken,
+            amount,
+            finalZigtAmount,
+            profit,
+            block.timestamp
+        );
+
+        return (true, abi.encode(finalZigtAmount, profit), profit);
+    }
+
+    // ========== Helper Functions ==========
+    
+    function _isZiGToken(address token) internal view returns (bool) {
+        for (uint i = 0; i < zigtSymbols.length; i++) {
+            address zigtAddr = registry.getAddress(zigtSymbols[i]);
+            if (token == zigtAddr) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    function _getUniswapV3Quote(
+        address quoter,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn
+    ) internal view returns (uint256) {
+        (bool success, bytes memory data) = quoter.staticcall(
+            abi.encodeWithSelector(
+                IQuoter.quoteExactInputSingle.selector,
+                tokenIn,
+                tokenOut,
+                poolFee,
+                amountIn,
+                sqrtPriceLimitX96
+            )
+        );
+        
+        if (!success) return 0;
+        
+        try this.decodeQuoteResult(data) returns (uint256 amountOut) {
+            return amountOut;
+        } catch {
+            return 0;
+        }
+    }
+    
+    function _executeSwap(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 amountOutMinimum,
+        address router
+    ) internal returns (uint256) {
+        IERC20(tokenIn).approve(router, amountIn);
+        
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
+            fee: poolFee,
+            recipient: address(this),
+            deadline: block.timestamp + 300,
+            amountIn: amountIn,
+            amountOutMinimum: amountOutMinimum,
+            sqrtPriceLimitX96: sqrtPriceLimitX96
+        });
+        
+        uint256 amountOut = ISwapRouter(router).exactInputSingle(params);
+        IERC20(tokenIn).approve(router, 0);
+        
+        return amountOut;
+    }
+    
+    // Helper function for static call decoding
+    function decodeQuoteResult(bytes memory data) external pure returns (uint256 amountOut) {
+        (amountOut) = abi.decode(data, (uint256));
+    }
+    
+    // Emergency withdraw function (owner only)
+    function withdrawToken(address token, uint256 amount) external onlyOwner {
+        IERC20(token).safeTransfer(owner(), amount);
+    }
+}---File Content End---
+
+---Path and files name: pmms/contracts/strategies/StrategyYieldLoop.sol
 ---Filename: StrategyYieldLoop.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -1130,7 +1369,7 @@ contract StrategyYieldLoop is IStrategy, Initializable, UUPSUpgradeable, Ownable
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyStablecoinMetaProtocolArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyStablecoinMetaProtocolArbitrage.sol
 ---Filename: StrategyStablecoinMetaProtocolArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -1386,7 +1625,7 @@ contract StrategyStablecoinMetaProtocolArbitrage is IStrategy, Initializable, UU
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyTriangularArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyTriangularArbitrage.sol
 ---Filename: StrategyTriangularArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -1652,7 +1891,7 @@ contract StrategyTriangularArbitrage is IStrategy, Initializable, UUPSUpgradeabl
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyStakingTokenArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyStakingTokenArbitrage.sol
 ---Filename: StrategyStakingTokenArbitrage.sol
 ---File Content Start---
 // SPDX-License-License: UNLICENSED
@@ -1862,7 +2101,7 @@ contract StrategyStakingTokenArbitrage is IStrategy, Initializable, UUPSUpgradea
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyRebaseTokenArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyRebaseTokenArbitrage.sol
 ---Filename: StrategyRebaseTokenArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -2085,7 +2324,7 @@ contract StrategyRebaseTokenArbitrage is IStrategy, Initializable, UUPSUpgradeab
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyTemplate.sol
+---Path and files name: pmms/contracts/strategies/StrategyTemplate.sol
 ---Filename: StrategyTemplate.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -2170,7 +2409,7 @@ contract StrategyTemplate is IStrategy, ReentrancyGuard {
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyOracleLagArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyOracleLagArbitrage.sol
 ---Filename: StrategyOracleLagArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -2311,7 +2550,7 @@ contract StrategyOracleLagArbitrage is IStrategy, Initializable, UUPSUpgradeable
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyMEVCapture.sol
+---Path and files name: pmms/contracts/strategies/StrategyMEVCapture.sol
 ---Filename: StrategyMEVCapture.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -2485,7 +2724,7 @@ contract StrategyMEVCapture is IStrategy, Initializable, UUPSUpgradeable, Ownabl
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyStablecoinPegArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyStablecoinPegArbitrage.sol
 ---Filename: StrategyStablecoinPegArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -2774,7 +3013,7 @@ contract StrategyStablecoinPegArbitrage is IStrategy, Initializable, UUPSUpgrade
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyNFTFloorArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyNFTFloorArbitrage.sol
 ---Filename: StrategyNFTFloorArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -3009,7 +3248,7 @@ contract StrategyNFTFloorArbitrage is IStrategy, Initializable, UUPSUpgradeable,
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyAaveLiquidation.sol
+---Path and files name: pmms/contracts/strategies/StrategyAaveLiquidation.sol
 ---Filename: StrategyAaveLiquidation.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -3096,7 +3335,7 @@ contract StrategyAaveLiquidation is IStrategy, Initializable, UUPSUpgradeable, O
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyBase.sol
+---Path and files name: pmms/contracts/strategies/StrategyBase.sol
 ---Filename: StrategyBase.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -3156,7 +3395,7 @@ abstract contract BaseStrategy is IStrategy, Ownable, ReentrancyGuard {
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyNFTCollateralLiquidation.sol
+---Path and files name: pmms/contracts/strategies/StrategyNFTCollateralLiquidation.sol
 ---Filename: StrategyNFTCollateralLiquidation.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -3276,7 +3515,7 @@ contract StrategyNFTCollateralLiquidation is IStrategy, Initializable, UUPSUpgra
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyFlashloanGasArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyFlashloanGasArbitrage.sol
 ---Filename: StrategyFlashloanGasArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -3466,7 +3705,7 @@ contract StrategyFlashloanGasArbitrage is IStrategy, Initializable, UUPSUpgradea
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyGovernanceArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyGovernanceArbitrage.sol
 ---Filename: StrategyGovernanceArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -3601,7 +3840,7 @@ contract StrategyGovernanceArbitrage is IStrategy, Initializable, UUPSUpgradeabl
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyBridgingLatencyArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyBridgingLatencyArbitrage.sol
 ---Filename: StrategyBridgingLatencyArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -3840,7 +4079,7 @@ contract StrategyBridgingLatencyArbitrage is IStrategy, Initializable, UUPSUpgra
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyLPBurnArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyLPBurnArbitrage.sol
 ---Filename: StrategyLPBurnArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -4037,7 +4276,7 @@ contract StrategyLPBurnArbitrage is IStrategy, Initializable, UUPSUpgradeable, O
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyGasRefundArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyGasRefundArbitrage.sol
 ---Filename: StrategyGasRefundArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -4193,7 +4432,7 @@ contract StrategyGasRefundArbitrage is IStrategy, Initializable, UUPSUpgradeable
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyFlashMintArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyFlashMintArbitrage.sol
 ---Filename: StrategyFlashMintArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -4445,7 +4684,7 @@ contract StrategyFlashMintArbitrage is IStrategy, Initializable, UUPSUpgradeable
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyCrossDexLendingArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyCrossDexLendingArbitrage.sol
 ---Filename: StrategyCrossDexLendingArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -4542,7 +4781,7 @@ contract StrategyCrossDexLendingArbitrage is IStrategy, Initializable, UUPSUpgra
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyLiquityLiquidation.sol
+---Path and files name: pmms/contracts/strategies/StrategyLiquityLiquidation.sol
 ---Filename: StrategyLiquityLiquidation.sol
 ---File Content Start---
 // contracts/pmms/strategies/StrategyLiquityLiquidation.sol
@@ -4615,7 +4854,7 @@ contract StrategyLiquityLiquidation is IStrategy, Initializable, UUPSUpgradeable
     }
 }---File Content End---
 
----Path and files name: pmms/strategies/StrategyDexArbitrage.sol
+---Path and files name: pmms/contracts/strategies/StrategyDexArbitrage.sol
 ---Filename: StrategyDexArbitrage.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -4769,7 +5008,7 @@ contract StrategyDexArbitrage is IStrategy, Initializable, UUPSUpgradeable, Owna
     }
 }---File Content End---
 
----Path and files name: pmms/utils/ArbitrumSellHandler.sol
+---Path and files name: pmms/contracts/utils/ArbitrumSellHandler.sol
 ---Filename: ArbitrumSellHandler.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -4831,13 +5070,13 @@ contract ArbitrumSellHandler is ReentrancyGuard, Ownable {
     }
 }---File Content End---
 
----Path and files name: pmms/utils/SafeERC20.sol
+---Path and files name: pmms/contracts/utils/SafeERC20.sol
 ---Filename: SafeERC20.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;---File Content End---
 
----Path and files name: pmms/utils/StrategyLib.sol
+---Path and files name: pmms/contracts/utils/StrategyLib.sol
 ---Filename: StrategyLib.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -4891,7 +5130,7 @@ library StrategyLib {
     }
 }---File Content End---
 
----Path and files name: pmms/interfaces/IAavePool.sol
+---Path and files name: pmms/contracts/interfaces/IAavePool.sol
 ---Filename: IAavePool.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -4992,7 +5231,7 @@ interface IAavePool {
         );
 }---File Content End---
 
----Path and files name: pmms/interfaces/ICompound.sol
+---Path and files name: pmms/contracts/interfaces/ICompound.sol
 ---Filename: ICompound.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -5005,7 +5244,7 @@ interface ICompound {
     function supplyRatePerBlock() external view returns (uint256);
 }---File Content End---
 
----Path and files name: pmms/interfaces/IUniswapV2Router02.sol
+---Path and files name: pmms/contracts/interfaces/IUniswapV2Router02.sol
 ---Filename: IUniswapV2Router02.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -5022,7 +5261,7 @@ function swapExactTokensForTokens(
 ) external returns (uint[] memory amounts);
 }---File Content End---
 
----Path and files name: pmms/interfaces/ILiquityTroveManager.sol
+---Path and files name: pmms/contracts/interfaces/ILiquityTroveManager.sol
 ---Filename: ILiquityTroveManager.sol
 ---File Content Start---
 // pmms/interfaces/ILiquityTroveManager.sol
@@ -5036,7 +5275,7 @@ interface ILiquityTroveManager {
 }
 ---File Content End---
 
----Path and files name: pmms/interfaces/ICurvePool.sol
+---Path and files name: pmms/contracts/interfaces/ICurvePool.sol
 ---Filename: ICurvePool.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -5049,7 +5288,7 @@ interface ICurvePool {
     function add_liquidity(uint256[3] memory amounts, uint256 min_mint_amount) external returns (uint256);
 }---File Content End---
 
----Path and files name: pmms/interfaces/INftFloorOracle.sol
+---Path and files name: pmms/contracts/interfaces/INftFloorOracle.sol
 ---Filename: INftFloorOracle.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -5060,7 +5299,7 @@ interface INftFloorOracle {
 }
 ---File Content End---
 
----Path and files name: pmms/interfaces/IStrategy.sol
+---Path and files name: pmms/contracts/interfaces/IStrategy.sol
 ---Filename: IStrategy.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -5072,7 +5311,7 @@ interface IStrategy {
     function execute(bytes memory executionData, uint256 amount, uint256 premium) external returns (bool success, bytes memory result, uint256 finalAmount);
 }---File Content End---
 
----Path and files name: pmms/interfaces/IRegistry.sol
+---Path and files name: pmms/contracts/interfaces/IRegistry.sol
 ---Filename: IRegistry.sol
 ---File Content Start---
 // contracts/interfaces/IRegistry.sol
@@ -5090,7 +5329,7 @@ interface IRegistry {
     function addStrategy(string memory name, address strategy) external;
 }---File Content End---
 
----Path and files name: pmms/interfaces/IQuoter.sol
+---Path and files name: pmms/contracts/interfaces/IQuoter.sol
 ---Filename: IQuoter.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -5106,7 +5345,7 @@ interface IQuoter {
     ) external returns (uint256 amountOut);
 }---File Content End---
 
----Path and files name: pmms/interfaces/ISwapRouter.sol
+---Path and files name: pmms/contracts/interfaces/ISwapRouter.sol
 ---Filename: ISwapRouter.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED
@@ -5127,7 +5366,7 @@ interface ISwapRouter {
     function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut);
 }---File Content End---
 
----Path and files name: pmms/interfaces/IConvexBooster.sol
+---Path and files name: pmms/contracts/interfaces/IConvexBooster.sol
 ---Filename: IConvexBooster.sol
 ---File Content Start---
 // SPDX-License-Identifier: UNLICENSED

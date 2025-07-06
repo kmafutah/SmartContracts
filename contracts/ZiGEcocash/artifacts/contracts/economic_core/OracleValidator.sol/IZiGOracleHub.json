@@ -1,0 +1,71 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "IZiGOracleHub",
+  "sourceName": "contracts/economic_core/OracleValidator.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "name": "calculateZiGPrice",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "asset",
+          "type": "string"
+        }
+      ],
+      "name": "getPrice",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getSystemHealth",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "validCryptoFeeds",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "validMetalFeeds",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "validForexFeeds",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "totalFeeds",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}
