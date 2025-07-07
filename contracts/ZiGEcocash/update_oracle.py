@@ -38,7 +38,7 @@ WALLET_ADDRESS = ACCOUNT.address
 web3 = Web3(Web3.HTTPProvider(RPC_URL))
 
 # === Load ABI and Oracle Contract ===
-with open("../../artifacts/contracts/economic_core/ZiGOracleHub.sol/ZiGOracleHub.json") as f:
+with open("ZiGOracleHub.json") as f:
     oracle_abi = json.load(f)["abi"]
 
 
