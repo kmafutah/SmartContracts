@@ -96,6 +96,7 @@ def fetch_price(asset):
         data = yf.Ticker(ticker).info
         price = float(data["regularMarketPrice"])
         logging.info(f"Fetched {asset} = ${price}")
+        time.sleep(2)
         return price
     except Exception as e:
         logging.error(f"Failed to fetch {asset}: {e}")
