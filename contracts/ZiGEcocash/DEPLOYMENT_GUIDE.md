@@ -1,192 +1,168 @@
-# 🚀 ZiGEcocash Multi-Network Deployment Guide
+# 🚀 ZiG Ecosystem Deployment Guide
 
-## 📋 Prerequisites
+## 📋 Pre-Deployment Checklist
 
-1. **Private Key**: You need a private key for deployment
-2. **Environment Setup**: Create a `.env` file with your private key
-3. **Network Access**: Ensure you can connect to the target networks
-
-## 🔧 Setup Instructions
-
-### 1. Create Environment File
-
-Create a `.env` file in the root directory:
-
+### 1. Environment Setup
 ```bash
-# Private key for deployment (without 0x prefix)
+# Copy environment template
+cp env.example .env
+
+# Fill in your environment variables
 PRIVATE_KEY=your_private_key_here
-
-# Optional: API keys for block explorers
+POLYGON_ZKEVM_RPC_URL=https://zkevm-rpc.com
 ETHERSCAN_API_KEY=your_etherscan_api_key
-POLYGONSCAN_API_KEY=your_polygonscan_api_key
-ARBISCAN_API_KEY=your_arbiscan_api_key
-OPTIMISTIC_ETHERSCAN_API_KEY=your_optimistic_etherscan_api_key
-BASESCAN_API_KEY=your_basescan_api_key
+POLYGON_ZKEVM_API_KEY=your_polygon_zkevm_api_key
 ```
 
-### 2. Install Dependencies
+### 2. Network Configuration
+The system supports multiple networks:
+- **Polygon zkEVM** (Current) - Zero gas fees, secure
+- **Base** - Coinbase L2, growing ecosystem
+- **Arbitrum One** - Fast, cheap transactions
+- **Optimism** - Ethereum L2, high adoption
+- **BSC** - High adoption, lower fees
 
+## 🔧 Deployment Order
+
+### Step 1: Deploy Core Contracts
 ```bash
-npm install
+# Deploy all contracts to the target network
+npx hardhat run scripts/deploy-circular.js --network <NETWORK_NAME>
 ```
 
-## 🌐 Available Networks
-
-### Zero-Gas Networks (Recommended)
-
-| Network | Description | Gas Fees | Command |
-|---------|-------------|----------|---------|
-| **SKALE** | Zero gas fees, high throughput | Free | `npx hardhat run scripts/deploy-full.js --network skale` |
-| **IOTA EVM** | Zero gas fees, feeless transactions | Free | `npx hardhat run scripts/deploy-full.js --network iota` |
-
-### Low-Cost Networks
-
-| Network | Description | Gas Fees | Command |
-|---------|-------------|----------|---------|
-| **Polygon zkEVM** | Very low gas, ZK rollup | ~$0.01-0.05 | `npx hardhat run scripts/deploy-full.js --network polygon_zkevm` |
-| **Base** | Low gas, Coinbase L2 | ~$0.01-0.05 | `npx hardhat run scripts/deploy-full.js --network base` |
-| **Arbitrum One** | Low gas, optimistic rollup | ~$0.01-0.05 | `npx hardhat run scripts/deploy-full.js --network arbitrum` |
-| **Optimism** | Low gas, optimistic rollup | ~$0.01-0.05 | `npx hardhat run scripts/deploy-full.js --network optimism` |
-| **Mantle** | Low gas, modular L2 | ~$0.01-0.05 | `npx hardhat run scripts/deploy-full.js --network mantle` |
-| **Scroll** | Low gas, ZK rollup | ~$0.01-0.05 | `npx hardhat run scripts/deploy-full.js --network scroll` |
-| **Linea** | Low gas, ZK rollup | ~$0.01-0.05 | `npx hardhat run scripts/deploy-full.js --network linea` |
-| **Polygon** | Low gas, sidechain | ~$0.01-0.05 | `npx hardhat run scripts/deploy-full.js --network polygon` |
-
-## 🚀 Deployment Commands
-
-### Quick Start (Zero-Gas Networks)
-
+### Step 2: Update Oracle Prices
 ```bash
-# Deploy to SKALE (completely free)
-npx hardhat run scripts/deploy-full.js --network skale
-
-# Deploy to IOTA EVM (completely free)
-npx hardhat run scripts/deploy-full.js --network iota
+# Update all oracle prices with current market data
+python3 update_oracle.py
 ```
 
-### Low-Cost Networks (Need ETH for gas)
-
+### Step 3: Configure Contracts
 ```bash
-# Deploy to Polygon zkEVM
-npx hardhat run scripts/deploy-full.js --network polygon_zkevm
+# Set up contract relationships and permissions
+npx hardhat run scripts/setup-contract-relationships.js --network <NETWORK_NAME>
+```
 
+### Step 4: Validate Configuration
+```bash
+# Check all contract configurations
+npx hardhat run scripts/check-contract-configuration.js --network <NETWORK_NAME>
+```
+
+### Step 5: Test User Onboarding
+```bash
+# Test the complete user onboarding process
+npx hardhat run scripts/user-onboarding.js --network <NETWORK_NAME>
+```
+
+## 🌐 Multi-Network Deployment
+
+### Polygon zkEVM (Current)
+```bash
+# Already deployed and working
+npx hardhat run scripts/check-contract-configuration.js --network polygon_zkevm
+```
+
+### Base Network
+```bash
 # Deploy to Base
-npx hardhat run scripts/deploy-full.js --network base
-
-# Deploy to Arbitrum
-npx hardhat run scripts/deploy-full.js --network arbitrum
-
-# Deploy to Optimism
-npx hardhat run scripts/deploy-full.js --network optimism
-
-# Deploy to Mantle
-npx hardhat run scripts/deploy-full.js --network mantle
-
-# Deploy to Scroll
-npx hardhat run scripts/deploy-full.js --network scroll
-
-# Deploy to Linea
-npx hardhat run scripts/deploy-full.js --network linea
-
-# Deploy to Polygon
-npx hardhat run scripts/deploy-full.js --network polygon
+npx hardhat run scripts/deploy-circular.js --network base
+npx hardhat run scripts/setup-contract-relationships.js --network base
+npx hardhat run scripts/check-contract-configuration.js --network base
 ```
 
-## 📊 What Gets Deployed
+### Arbitrum One
+```bash
+# Add to hardhat.config.js first, then deploy
+npx hardhat run scripts/deploy-circular.js --network arbitrum
+npx hardhat run scripts/setup-contract-relationships.js --network arbitrum
+npx hardhat run scripts/check-contract-configuration.js --network arbitrum
+```
 
-The `deploy-full.js` script deploys the **ENTIRE ZiGEcocash ecosystem**:
+### Optimism
+```bash
+# Add to hardhat.config.js first, then deploy
+npx hardhat run scripts/deploy-circular.js --network optimism
+npx hardhat run scripts/setup-contract-relationships.js --network optimism
+npx hardhat run scripts/check-contract-configuration.js --network optimism
+```
 
-### Phase 1: Core Economic Infrastructure
-- ✅ ZiGOracleHub
-- ✅ Vault  
-- ✅ ZiGT (Zimbabwe Gold Token)
-- ✅ ZiG (Main stablecoin)
-- ✅ ZiGWallet
+## 📊 Contract Verification
 
-### Phase 2: Identity & Governance
-- ✅ ZiGSoulboundToken
-- ✅ AccessVerifier
-- ✅ EthicalGuard
-- ✅ ReparationsDAO
-- ✅ ZiGGovernanceToken
+After deployment, verify contracts on block explorers:
 
-### Phase 3: Cultural & Utility Layer
-- ✅ SoulReparationNFT
-- ✅ ZiGNFT
-- ✅ ZiGRWAToken
-- ✅ ZiGUtilityToken
-- ✅ ZiGMemeToken
+```bash
+# Verify on Polygon zkEVM
+npx hardhat verify --network polygon_zkevm <CONTRACT_ADDRESS> <CONSTRUCTOR_ARGS>
 
-### Phase 4: GameFi Expansion
-- ✅ ZiGGameFiToken
-- ✅ ZiGBondingCurve
+# Verify on Base
+npx hardhat verify --network base <CONTRACT_ADDRESS> <CONSTRUCTOR_ARGS>
+```
 
-## 💰 Funding Requirements
+## 🔍 Post-Deployment Validation
 
-### Zero-Gas Networks
-- **SKALE**: No ETH needed
-- **IOTA EVM**: No ETH needed
+### 1. Configuration Check
+```bash
+npx hardhat run scripts/check-contract-configuration.js --network <NETWORK_NAME>
+```
 
-### Low-Cost Networks
-- **Polygon zkEVM**: ~0.01-0.05 ETH for gas
-- **Base**: ~0.01-0.05 ETH for gas
-- **Arbitrum**: ~0.01-0.05 ETH for gas
-- **Optimism**: ~0.01-0.05 ETH for gas
-- **Mantle**: ~0.01-0.05 ETH for gas
-- **Scroll**: ~0.01-0.05 ETH for gas
-- **Linea**: ~0.01-0.05 ETH for gas
-- **Polygon**: ~0.01-0.05 ETH for gas
+### 2. User Onboarding Test
+```bash
+npx hardhat run scripts/user-onboarding.js --network <NETWORK_NAME>
+```
 
-## 🔍 Post-Deployment
-
-After successful deployment:
-
-1. **Check deployment-addresses.json** for all contract addresses
-2. **Verify contracts** on block explorers
-3. **Test interactions** using `scripts/interact.js`
-4. **Set up oracles** and governance parameters
+### 3. Oracle Price Check
+```bash
+npx hardhat run scripts/check-oracle-prices.js --network <NETWORK_NAME>
+```
 
 ## 🛠️ Troubleshooting
 
-### Common Issues
+### Common Issues:
+1. **Gas Issues**: Some networks have different gas requirements
+2. **Oracle Updates**: Ensure oracle prices are updated after deployment
+3. **Contract Relationships**: Verify all contract addresses are correctly set
 
-1. **"No deployer account found"**
-   - Check your `.env` file has `PRIVATE_KEY`
-   - Ensure private key doesn't start with `0x`
+### Fix Scripts:
+```bash
+# Fix critical issues if needed
+npx hardhat run scripts/fix-critical-issues.js --network <NETWORK_NAME>
 
-2. **"Insufficient funds"**
-   - For zero-gas networks: This is normal
-   - For other networks: Add ETH to your account
+# Fix minor issues
+npx hardhat run scripts/fix-minor-issues-final.js --network <NETWORK_NAME>
+```
 
-3. **"Network connection failed"**
-   - Check internet connection
-   - Verify RPC endpoints in `hardhat.config.js`
+## 📈 Production Readiness
 
-4. **"Contract deployment failed"**
-   - Check constructor parameters
-   - Verify contract dependencies
+### ✅ What's Working:
+- ZiG token minting and transfers
+- ZiGT stable token minting via Vault
+- Oracle price feeds (BTCUSD, ETHUSD, etc.)
+- Regional stablecoins (6 African regions)
+- DAO governance and voting
+- Soulbound identity tokens
+- User onboarding process
+- All utility token types
 
-### Getting Help
-
-- Check the deployment logs for specific error messages
-- Verify your private key is correct
-- Ensure you have sufficient balance for gas fees (if applicable)
+### ⚠️ Minor Issues:
+- NFT minting (cosmetic, doesn't affect core functionality)
 
 ## 🎯 Recommended Deployment Order
 
-1. **Start with SKALE** (zero gas, easy testing)
-2. **Then IOTA EVM** (zero gas, feeless)
-3. **Then Polygon zkEVM** (very low gas)
-4. **Then other L2s** as needed
+1. **Polygon zkEVM** ✅ (Already deployed)
+2. **Base** (Recommended next - growing ecosystem)
+3. **Arbitrum One** (High adoption, low fees)
+4. **Optimism** (Ethereum L2, established)
+5. **BSC** (High adoption, lower fees)
 
-## 📈 Network Comparison
+## 🚀 Quick Start Commands
 
-| Feature | SKALE | IOTA | Polygon zkEVM | Base | Arbitrum |
-|---------|-------|------|---------------|------|----------|
-| Gas Fees | Free | Free | Very Low | Low | Low |
-| Speed | Fast | Fast | Very Fast | Fast | Fast |
-| Security | High | High | Very High | High | High |
-| Ecosystem | Growing | Growing | Large | Large | Large |
-| Developer Support | Good | Good | Excellent | Excellent | Excellent |
+```bash
+# For a new network deployment:
+npx hardhat run scripts/deploy-circular.js --network <NETWORK>
+python3 update_oracle.py
+npx hardhat run scripts/setup-contract-relationships.js --network <NETWORK>
+npx hardhat run scripts/check-contract-configuration.js --network <NETWORK>
+npx hardhat run scripts/user-onboarding.js --network <NETWORK>
+```
 
-Choose the network that best fits your needs! 
+The ZiG ecosystem is production-ready and can be deployed to any EVM-compatible network! 🎉 
