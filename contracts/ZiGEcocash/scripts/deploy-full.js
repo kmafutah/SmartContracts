@@ -1,11 +1,12 @@
-const {ethers} = require('hardhat')
+require("@openzeppelin/hardhat-upgrades");
+const {ethers, upgrades} = require('hardhat')
 const fs = require('fs')
 const path = require('path')
 
 async function main() {
     console.log('🚀 Starting Full ZiGEcocash deployment...')
 
-    const [deployer] = await ethers.getSigners()
+    const [deployer] = await ethers.getSigners();
 
     if (!deployer) {
         console.error(
@@ -130,34 +131,37 @@ async function main() {
         deploymentAddresses.EthicalGuard = await ethicalGuard.getAddress()
         console.log('✅ EthicalGuard:', await ethicalGuard.getAddress())
 
+        // ZiGGovernanceToken
+        console.log('Deploying ZiGGovernanceToken...')
+        const ZiGGovernanceToken = await ethers.getContractFactory('ZiGGovernanceToken')
+        const governanceToken = await ZiGGovernanceToken.deploy(
+            1000000000000000000000000n // Example max supply, adjust as needed
+        )
+        await governanceToken.waitForDeployment()
+        deploymentAddresses.ZiGGovernanceToken = await governanceToken.getAddress()
+        console.log('✅ ZiGGovernanceToken:', await governanceToken.getAddress())
+
+        // ZiGUtilityToken
+        console.log('Deploying ZiGUtilityToken...')
+        const ZiGUtilityToken = await ethers.getContractFactory('ZiGUtilityToken')
+        const utilityToken = await ZiGUtilityToken.deploy()
+        await utilityToken.waitForDeployment()
+        deploymentAddresses.ZiGUtilityToken = await utilityToken.getAddress()
+        console.log('✅ ZiGUtilityToken:', await utilityToken.getAddress())
+
         // ReparationsDAO
         console.log('Deploying ReparationsDAO...')
         const ReparationsDAO = await ethers.getContractFactory('ReparationsDAO')
         const reparationsDAO = await ReparationsDAO.deploy(
-            deployer.address,
-            await zig.getAddress(),
-            await ethicalGuard.getAddress(),
-            await soulboundToken.getAddress()
+            deployer.address, // _initialOwner
+            await governanceToken.getAddress(), // _governanceToken
+            await ethicalGuard.getAddress(), // _ethicalGuard
+            await soulboundToken.getAddress(), // _reparationNFT
+            await utilityToken.getAddress() // _utilityToken
         )
         await reparationsDAO.waitForDeployment()
         deploymentAddresses.ReparationsDAO = await reparationsDAO.getAddress()
         console.log('✅ ReparationsDAO:', await reparationsDAO.getAddress())
-
-        // ZiGGovernanceToken
-        console.log('Deploying ZiGGovernanceToken...')
-        const ZiGGovernanceToken = await ethers.getContractFactory(
-            'ZiGGovernanceToken'
-        )
-        const governanceToken = await ZiGGovernanceToken.deploy(
-            await reparationsDAO.getAddress()
-        )
-        await governanceToken.waitForDeployment()
-        deploymentAddresses.ZiGGovernanceToken =
-            await governanceToken.getAddress()
-        console.log(
-            '✅ ZiGGovernanceToken:',
-            await governanceToken.getAddress()
-        )
 
         // Phase 3: Cultural & Utility Layer
         console.log('\n🎭 Phase 3: Cultural & Utility Layer')
@@ -194,16 +198,6 @@ async function main() {
         deploymentAddresses.ZiGRWAToken = await rwaToken.getAddress()
         console.log('✅ ZiGRWAToken:', await rwaToken.getAddress())
 
-        // ZiGUtilityToken
-        console.log('Deploying ZiGUtilityToken...')
-        const ZiGUtilityToken = await ethers.getContractFactory(
-            'ZiGUtilityToken'
-        )
-        const utilityToken = await ZiGUtilityToken.deploy()
-        await utilityToken.waitForDeployment()
-        deploymentAddresses.ZiGUtilityToken = await utilityToken.getAddress()
-        console.log('✅ ZiGUtilityToken:', await utilityToken.getAddress())
-
         // ZiGMemeToken
         console.log('Deploying ZiGMemeToken...')
         const ZiGMemeToken = await ethers.getContractFactory('ZiGMemeToken')
@@ -232,6 +226,83 @@ async function main() {
         await bondingCurve.waitForDeployment()
         deploymentAddresses.ZiGBondingCurve = await bondingCurve.getAddress()
         console.log('✅ ZiGBondingCurve:', await bondingCurve.getAddress())
+
+        // Phase 5: Oracles & Registry
+        console.log('\n🔮 Phase 5: Oracles & Registry')
+
+        // FeedRegistry (UUPS upgradable, deploy with proxy)
+        console.log('Deploying FeedRegistry (UUPS proxy)...')
+        const FeedRegistry = await ethers.getContractFactory('FeedRegistry')
+        const feedRegistry = await upgrades.deployProxy(FeedRegistry, [], { kind: 'uups' })
+        await feedRegistry.waitForDeployment()
+        deploymentAddresses.FeedRegistry = await feedRegistry.getAddress()
+        console.log('✅ FeedRegistry:', await feedRegistry.getAddress())
+
+        // BandFeedRegistry (UUPS upgradable, deploy with proxy and owner)
+        console.log('Deploying BandFeedRegistry (UUPS proxy)...')
+        const BandFeedRegistry = await ethers.getContractFactory('BandFeedRegistry')
+        const bandFeedRegistry = await upgrades.deployProxy(BandFeedRegistry, [deployer.address], { kind: 'uups' })
+        await bandFeedRegistry.waitForDeployment()
+        deploymentAddresses.BandFeedRegistry = await bandFeedRegistry.getAddress()
+        console.log('✅ BandFeedRegistry:', await bandFeedRegistry.getAddress())
+
+        // LiveBandFeed (no constructor args)
+        console.log('Deploying LiveBandFeed...')
+        const LiveBandFeed = await ethers.getContractFactory('LiveBandFeed')
+        const liveBandFeed = await LiveBandFeed.deploy()
+        await liveBandFeed.waitForDeployment()
+        deploymentAddresses.LiveBandFeed = await liveBandFeed.getAddress()
+        console.log('✅ LiveBandFeed:', await liveBandFeed.getAddress())
+
+        // MultiOracle (no constructor args)
+        console.log('Deploying MultiOracle...')
+        const MultiOracle = await ethers.getContractFactory('MultiOracle')
+        const multiOracle = await MultiOracle.deploy()
+        await multiOracle.waitForDeployment()
+        deploymentAddresses.MultiOracle = await multiOracle.getAddress()
+        console.log('✅ MultiOracle:', await multiOracle.getAddress())
+
+        // OracleValidator (needs oracleHub and owner)
+        console.log('Deploying OracleValidator...')
+        const OracleValidator = await ethers.getContractFactory('OracleValidator')
+        const oracleValidator = await OracleValidator.deploy(
+            await oracleHub.getAddress(),
+            deployer.address
+        )
+        await oracleValidator.waitForDeployment()
+        deploymentAddresses.OracleValidator = await oracleValidator.getAddress()
+        console.log('✅ OracleValidator:', await oracleValidator.getAddress())
+
+        // OracleAggregator (needs owner)
+        console.log('Deploying OracleAggregator...')
+        const OracleAggregator = await ethers.getContractFactory('OracleAggregator')
+        const oracleAggregator = await OracleAggregator.deploy(deployer.address)
+        await oracleAggregator.waitForDeployment()
+        deploymentAddresses.OracleAggregator = await oracleAggregator.getAddress()
+        console.log('✅ OracleAggregator:', await oracleAggregator.getAddress())
+
+        // OracleHealthMonitor (needs oracleHub and owner)
+        console.log('Deploying OracleHealthMonitor...')
+        const OracleHealthMonitor = await ethers.getContractFactory('OracleHealthMonitor')
+        const oracleHealthMonitor = await OracleHealthMonitor.deploy(
+            await oracleHub.getAddress(),
+            deployer.address
+        )
+        await oracleHealthMonitor.waitForDeployment()
+        deploymentAddresses.OracleHealthMonitor = await oracleHealthMonitor.getAddress()
+        console.log('✅ OracleHealthMonitor:', await oracleHealthMonitor.getAddress())
+
+        // RegionalStablecoins (needs utilityToken, oracleHub, dao)
+        console.log('Deploying RegionalStablecoins...')
+        const RegionalStablecoins = await ethers.getContractFactory('RegionalStablecoins')
+        const regionalStablecoins = await RegionalStablecoins.deploy(
+            await utilityToken.getAddress(),
+            await oracleHub.getAddress(),
+            await reparationsDAO.getAddress()
+        )
+        await regionalStablecoins.waitForDeployment()
+        deploymentAddresses.RegionalStablecoins = await regionalStablecoins.getAddress()
+        console.log('✅ RegionalStablecoins:', await regionalStablecoins.getAddress())
 
         // Save deployment addresses
         const deploymentPath = path.join(

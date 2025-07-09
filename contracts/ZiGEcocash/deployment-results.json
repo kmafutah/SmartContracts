@@ -1,0 +1,15 @@
+{
+  "deployments": {
+    "base": false,
+    "celo": false,
+    "skale": false,
+    "zero": false,
+    "sophon": false,
+    "vite": false,
+    "oasis": false,
+    "iota_evm": false
+  },
+  "setups": {},
+  "configurations": {},
+  "onboarding": {}
+}

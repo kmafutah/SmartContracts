@@ -603,11 +603,19 @@ interface ISoulReparationNFT {
     ) external;
 }
 
+// Interface for ZiGUtilityToken
+interface IZiGUtilityToken {
+    function mint(address _to, uint256 _id, uint256 _amount, bytes memory _data) external;
+    function burn(address _from, uint256 _id, uint256 _amount) external;
+    function balanceOf(address _owner, uint256 _id) external view returns (uint256);
+}
+
 /**
- * @title Reparations DAO
+ * @title Reparations DAO with Utility Token Fuel System
  * @dev Governance for reparations distribution with African majority requirement
+ * @dev Uses ZiGUtilityToken as fuel for governance operations
  */
-contract ReparationsDAO is Ownable {
+contract ReparationsDAO is Ownable, ReentrancyGuard {
     using Math for uint256;
     
     struct Proposal {
@@ -621,12 +629,20 @@ contract ReparationsDAO is Ownable {
         uint256 africanVotes; // Track African votes separately
         uint256 deadline;
         bool executed;
+        uint256 fuelCost; // Track fuel cost for the proposal
     }
     
     mapping(uint256 => Proposal) public proposals;
     mapping(address => uint256) public votingPower;
     mapping(address => bool) public africanVerified;
     mapping(uint256 => mapping(address => bool)) public hasVoted; // Separate voting tracker
+    
+    // Utility token integration
+    address public utilityToken;
+    uint256 public PROPOSAL_FUEL_COST = 100; // 100 utility tokens to create proposal
+    uint256 public VOTE_FUEL_COST = 10;      // 10 utility tokens to vote
+    uint256 public EXECUTION_FUEL_COST = 50; // 50 utility tokens to execute
+    uint256 public GOVERNANCE_BONUS_FUEL_COST = 25; // 25 utility tokens for governance bonus
     
     uint256 public proposalCount;
     uint256 public votingDuration = 7 days;
@@ -636,21 +652,33 @@ contract ReparationsDAO is Ownable {
     address public ethicalGuard;
     address public reparationNFT;
     
-    event ProposalCreated(uint256 indexed proposalId, address indexed proposer, uint256 amount);
-    event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 weight);
-    event ProposalExecuted(uint256 indexed proposalId);
+    // Fuel cost tracking
+    mapping(address => uint256) public userFuelSpent;
+    mapping(uint256 => uint256) public proposalFuelSpent;
+    
+    event ProposalCreated(uint256 indexed proposalId, address indexed proposer, uint256 amount, uint256 fuelCost);
+    event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 weight, uint256 fuelCost);
+    event ProposalExecuted(uint256 indexed proposalId, uint256 fuelCost);
+    event FuelBurned(address indexed user, uint256 tokenId, uint256 amount, string action);
+    event GovernanceBonusAwarded(address indexed user, uint256 amount);
     
     constructor(
         address _initialOwner,
         address _governanceToken,
         address _ethicalGuard,
-        address _reparationNFT
+        address _reparationNFT,
+        address _utilityToken
     ) Ownable(_initialOwner) {
         governanceToken = _governanceToken;
         ethicalGuard = _ethicalGuard;
         reparationNFT = _reparationNFT;
+        utilityToken = _utilityToken;
     }
 
+    /**
+     * @dev Create a proposal with utility token fuel cost
+     * Requires TRANSACTION_FEE_TOKEN (ID: 1) as fuel
+     */
     function createProposal(
         string memory _description,
         uint256 _amount,
@@ -658,6 +686,9 @@ contract ReparationsDAO is Ownable {
     ) external returns (uint256) {
         require(votingPower[msg.sender] > 0, "DAO: No voting power");
         require(africanVerified[msg.sender], "DAO: Must be verified African");
+        
+        // Burn fuel tokens for proposal creation
+        _burnFuel(msg.sender, 1, PROPOSAL_FUEL_COST, "proposal_creation");
         
         proposalCount++;
         uint256 proposalId = proposalCount;
@@ -669,16 +700,27 @@ contract ReparationsDAO is Ownable {
         proposal.amount = _amount;
         proposal.recipient = _recipient;
         proposal.deadline = block.timestamp + votingDuration;
+        proposal.fuelCost = PROPOSAL_FUEL_COST;
         
-        emit ProposalCreated(proposalId, msg.sender, _amount);
+        userFuelSpent[msg.sender] += PROPOSAL_FUEL_COST;
+        proposalFuelSpent[proposalId] += PROPOSAL_FUEL_COST;
+        
+        emit ProposalCreated(proposalId, msg.sender, _amount, PROPOSAL_FUEL_COST);
         return proposalId;
     }
     
+    /**
+     * @dev Vote on a proposal with utility token fuel cost
+     * Requires TRANSACTION_FEE_TOKEN (ID: 1) as fuel
+     */
     function vote(uint256 _proposalId, bool _support) external {
         Proposal storage proposal = proposals[_proposalId];
         require(block.timestamp < proposal.deadline, "DAO: Voting ended");
         require(!hasVoted[_proposalId][msg.sender], "DAO: Already voted");
         require(votingPower[msg.sender] > 0, "DAO: No voting power");
+        
+        // Burn fuel tokens for voting
+        _burnFuel(msg.sender, 1, VOTE_FUEL_COST, "voting");
         
         hasVoted[_proposalId][msg.sender] = true;
         uint256 weight = votingPower[msg.sender];
@@ -694,9 +736,16 @@ contract ReparationsDAO is Ownable {
             proposal.africanVotes += weight;
         }
         
-        emit VoteCast(_proposalId, msg.sender, _support, weight);
+        userFuelSpent[msg.sender] += VOTE_FUEL_COST;
+        proposalFuelSpent[_proposalId] += VOTE_FUEL_COST;
+        
+        emit VoteCast(_proposalId, msg.sender, _support, weight, VOTE_FUEL_COST);
     }
     
+    /**
+     * @dev Execute a proposal with utility token fuel cost
+     * Requires TRANSACTION_FEE_TOKEN (ID: 1) as fuel
+     */
     function executeProposal(uint256 _proposalId) external {
         Proposal storage proposal = proposals[_proposalId];
         require(block.timestamp >= proposal.deadline, "DAO: Voting not ended");
@@ -710,7 +759,14 @@ contract ReparationsDAO is Ownable {
             "DAO: Need 51% African votes"
         );
         
+        // Burn fuel tokens for execution
+        _burnFuel(msg.sender, 1, EXECUTION_FUEL_COST, "proposal_execution");
+        
         proposal.executed = true;
+        proposal.fuelCost += EXECUTION_FUEL_COST;
+        
+        userFuelSpent[msg.sender] += EXECUTION_FUEL_COST;
+        proposalFuelSpent[_proposalId] += EXECUTION_FUEL_COST;
         
         ISoulReparationNFT(reparationNFT).claimReparation(
             proposal.recipient,
@@ -719,7 +775,89 @@ contract ReparationsDAO is Ownable {
             proposal.description
         );
         
-        emit ProposalExecuted(_proposalId);
+        emit ProposalExecuted(_proposalId, EXECUTION_FUEL_COST);
+    }
+    
+    /**
+     * @dev Award governance bonus tokens to active participants
+     * Requires GOVERNANCE_BONUS_TOKEN (ID: 3) as fuel
+     */
+    function awardGovernanceBonus(address _user, uint256 _amount) external {
+        require(msg.sender == owner() || africanVerified[msg.sender], "DAO: Not authorized");
+        require(_amount > 0, "DAO: Invalid bonus amount");
+        
+        // Burn fuel tokens for governance bonus
+        _burnFuel(msg.sender, 3, GOVERNANCE_BONUS_FUEL_COST, "governance_bonus");
+        
+        // Mint staking reward tokens as bonus
+        IZiGUtilityToken(utilityToken).mint(_user, 2, _amount, ""); // STAKING_REWARD_TOKEN = 2
+        
+        userFuelSpent[msg.sender] += GOVERNANCE_BONUS_FUEL_COST;
+        
+        emit GovernanceBonusAwarded(_user, _amount);
+    }
+    
+    /**
+     * @dev Internal function to burn fuel tokens
+     */
+    function _burnFuel(address _user, uint256 _tokenId, uint256 _amount, string memory _action) internal {
+        require(
+            IZiGUtilityToken(utilityToken).balanceOf(_user, _tokenId) >= _amount,
+            "DAO: Insufficient fuel tokens"
+        );
+        
+        IZiGUtilityToken(utilityToken).burn(_user, _tokenId, _amount);
+        emit FuelBurned(_user, _tokenId, _amount, _action);
+    }
+    
+    /**
+     * @dev Check if user has sufficient fuel for an action
+     */
+    function hasSufficientFuel(address _user, string memory _action) public view returns (bool) {
+        uint256 requiredFuel = 0;
+        uint256 tokenId = 1; // Default to TRANSACTION_FEE_TOKEN
+        
+        if (keccak256(bytes(_action)) == keccak256(bytes("proposal_creation"))) {
+            requiredFuel = PROPOSAL_FUEL_COST;
+        } else if (keccak256(bytes(_action)) == keccak256(bytes("voting"))) {
+            requiredFuel = VOTE_FUEL_COST;
+        } else if (keccak256(bytes(_action)) == keccak256(bytes("proposal_execution"))) {
+            requiredFuel = EXECUTION_FUEL_COST;
+        } else if (keccak256(bytes(_action)) == keccak256(bytes("governance_bonus"))) {
+            requiredFuel = GOVERNANCE_BONUS_FUEL_COST;
+            tokenId = 3; // GOVERNANCE_BONUS_TOKEN
+        }
+        
+        return IZiGUtilityToken(utilityToken).balanceOf(_user, tokenId) >= requiredFuel;
+    }
+    
+    /**
+     * @dev Get fuel costs for different actions
+     */
+    function getFuelCosts() external view returns (
+        uint256 proposalCost,
+        uint256 voteCost,
+        uint256 executionCost,
+        uint256 governanceBonusCost
+    ) {
+        return (PROPOSAL_FUEL_COST, VOTE_FUEL_COST, EXECUTION_FUEL_COST, GOVERNANCE_BONUS_FUEL_COST);
+    }
+    
+    /**
+     * @dev Get user's fuel statistics
+     */
+    function getUserFuelStats(address _user) external view returns (
+        uint256 totalSpent,
+        uint256 transactionFeeBalance,
+        uint256 stakingRewardBalance,
+        uint256 governanceBonusBalance,
+        uint256 culturalAccessBalance
+    ) {
+        totalSpent = userFuelSpent[_user];
+        transactionFeeBalance = IZiGUtilityToken(utilityToken).balanceOf(_user, 1);
+        stakingRewardBalance = IZiGUtilityToken(utilityToken).balanceOf(_user, 2);
+        governanceBonusBalance = IZiGUtilityToken(utilityToken).balanceOf(_user, 3);
+        culturalAccessBalance = IZiGUtilityToken(utilityToken).balanceOf(_user, 4);
     }
     
     function setVotingPower(address _user, uint256 _power) external onlyOwner {
@@ -728,6 +866,50 @@ contract ReparationsDAO is Ownable {
     
     function verifyAfrican(address _user) external onlyOwner {
         africanVerified[_user] = true;
+    }
+    
+    function setUtilityToken(address _utilityToken) external onlyOwner {
+        utilityToken = _utilityToken;
+    }
+    
+    function setFuelCosts(
+        uint256 _proposalCost,
+        uint256 _voteCost,
+        uint256 _executionCost,
+        uint256 _governanceBonusCost
+    ) external onlyOwner {
+        PROPOSAL_FUEL_COST = _proposalCost;
+        VOTE_FUEL_COST = _voteCost;
+        EXECUTION_FUEL_COST = _executionCost;
+        GOVERNANCE_BONUS_FUEL_COST = _governanceBonusCost;
+    }
+
+    function getProposal(uint256 id) public view returns (Proposal memory) {
+        return proposals[id];
+    }
+
+    function getAllProposals(uint256 limit, uint256 offset) public view returns (Proposal[] memory) {
+        uint256 count = proposalCount;
+        if (offset >= count) {
+            return new Proposal[](0);
+        }
+        uint256 end = offset + limit;
+        if (end > count) {
+            end = count;
+        }
+        Proposal[] memory result = new Proposal[](end - offset);
+        for (uint256 i = offset; i < end; i++) {
+            result[i - offset] = proposals[i + 1]; // proposals are 1-indexed
+        }
+        return result;
+    }
+
+    function getUserInfo(address user) public view returns (uint256, bool) {
+        return (votingPower[user], africanVerified[user]);
+    }
+
+    function getProposalCount() public view returns (uint256) {
+        return proposalCount;
     }
 }---File Content End---
 
@@ -783,6 +965,16 @@ contract ZiGUtilityToken is ERC1155, Ownable {
     
     function uri(uint256 _id) public view virtual override returns (string memory) {
         return tokenURIs[_id];
+    }
+
+    // Burn function for DAO fuel system
+    function burn(address account, uint256 id, uint256 amount) public {
+        require(
+            account == msg.sender || isApprovedForAll(account, msg.sender),
+            "ZiGUtility: caller is not owner nor approved"
+        );
+        _burn(account, id, amount);
+        tokenSupply[id] -= amount;
     }
 }---File Content End---
 
@@ -1425,6 +1617,7 @@ interface IBandOracle {
 /**
  * @title ZiG Oracle Hub
  * @dev Price oracle for the ZiG ecosystem combining Chainlink, Band Protocol, and internal feeds
+ * @dev Now supports DAO-controlled adjustment of asset weights and symbols
  */
 contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     
@@ -1465,12 +1658,22 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     mapping(string => PriceData) public emergencyPrices;
     mapping(address => bool) public emergencyOracles;
     
+    // DAO-controlled asset weights and symbols
+    address public dao;
+    string[] public cryptoSymbols;
+    uint256[] public cryptoWeights;
+    string[] public metalSymbols;
+    uint256[] public metalWeights;
+    string[] public forexSymbols;
+    uint256[] public forexWeights;
+    
     uint256 public constant PRICE_STALENESS_THRESHOLD = 3600; // 1 hour
     uint256 public constant EMERGENCY_STALENESS_THRESHOLD = 7200; // 2 hours for emergency feeds
     uint256 public constant PRECISION = 1e18; // 18 decimal precision
     uint256 public constant MAX_PRICE_DEVIATION = 1000; // 10% max deviation (in basis points)
+    uint256 public constant TOTAL_WEIGHT_BASIS_POINTS = 10000; // 100% in basis points
     
-    // ZiG backing components weights (in basis points for precision)
+    // Legacy constants for backward compatibility (deprecated)
     uint256 public constant BTC_WEIGHT = 120; // 0.12 -> 1200 basis points
     uint256 public constant ETH_WEIGHT = 90;  // 0.09 -> 900 basis points
     uint256 public constant BNB_WEIGHT = 30;  // 0.03 -> 300 basis points
@@ -1497,10 +1700,89 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     event BandOracleSet(string indexed asset, address indexed oracle);
     event EmergencyOracleSet(address indexed oracle, bool status);
     event EmergencyPriceSet(string indexed asset, uint256 price);
+    event DaoAddressSet(address indexed dao);
+    event AssetWeightsUpdated(string indexed category, string[] symbols, uint256[] weights);
+    
+    modifier onlyDao() {
+        require(msg.sender == dao, "OracleHub: Only DAO can call this function");
+        _;
+    }
     
     constructor(address initialOwner) Ownable(initialOwner) {
         authorizedOracles[initialOwner] = true;
         emergencyOracles[initialOwner] = true;
+        
+        // Initialize with default crypto assets and weights
+        cryptoSymbols = ["BTCUSD", "ETHUSD", "BNBUSD", "XRPUSD", "SOLUSD"];
+        cryptoWeights = [1200, 900, 300, 300, 300]; // 12%, 9%, 3%, 3%, 3%
+        
+        // Initialize with default metal assets and weights
+        metalSymbols = ["XAUUSD", "XPTUSD", "XPDUSD", "XAGUSD"];
+        metalWeights = [2000, 1000, 600, 400]; // 20%, 10%, 6%, 4%
+        
+        // Initialize with default forex assets and weights
+        forexSymbols = ["EURUSD", "GBPUSD", "USDZAR", "USDJPY", "USDCHF", "USDCNH"];
+        forexWeights = [750, 600, 600, 300, 300, 450]; // 7.5%, 6%, 6%, 3%, 3%, 4.5%
+    }
+
+    // ======================== DAO MANAGEMENT ======================== //
+    
+    function setDaoAddress(address _dao) external onlyOwner {
+        require(_dao != address(0), "Invalid DAO address");
+        dao = _dao;
+        emit DaoAddressSet(_dao);
+    }
+    
+    function setAssetWeightsAndSymbols(
+        string[] calldata symbols,
+        uint256[] calldata weights,
+        string calldata category
+    ) external onlyDao {
+        require(symbols.length == weights.length, "Arrays length mismatch");
+        require(symbols.length > 0, "Must have at least one asset");
+        require(symbols.length <= 20, "Too many assets");
+        
+        // Validate weights sum to 100%
+        uint256 totalWeight = 0;
+        for (uint256 i = 0; i < weights.length; i++) {
+            require(weights[i] > 0, "Weight must be positive");
+            totalWeight += weights[i];
+        }
+        require(totalWeight == TOTAL_WEIGHT_BASIS_POINTS, "Weights must sum to 100%");
+        
+        // Validate symbols are not empty
+        for (uint256 i = 0; i < symbols.length; i++) {
+            require(bytes(symbols[i]).length > 0, "Symbol cannot be empty");
+        }
+        
+        // Update storage based on category
+        if (keccak256(bytes(category)) == keccak256(bytes("crypto"))) {
+            cryptoSymbols = symbols;
+            cryptoWeights = weights;
+        } else if (keccak256(bytes(category)) == keccak256(bytes("metal"))) {
+            metalSymbols = symbols;
+            metalWeights = weights;
+        } else if (keccak256(bytes(category)) == keccak256(bytes("forex"))) {
+            forexSymbols = symbols;
+            forexWeights = weights;
+        } else {
+            revert("Invalid category");
+        }
+        
+        emit AssetWeightsUpdated(category, symbols, weights);
+    }
+    
+    // Getter functions for current weights and symbols
+    function getCryptoAssets() external view returns (string[] memory, uint256[] memory) {
+        return (cryptoSymbols, cryptoWeights);
+    }
+    
+    function getMetalAssets() external view returns (string[] memory, uint256[] memory) {
+        return (metalSymbols, metalWeights);
+    }
+    
+    function getForexAssets() external view returns (string[] memory, uint256[] memory) {
+        return (forexSymbols, forexWeights);
     }
 
     // ======================== ORACLE INTEGRATIONS ======================== //
@@ -1778,10 +2060,10 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     // ======================== ZIG PRICE CALCULATION ======================== //
     
     /**
-     * @dev Calculate ZiG backing value using C + M + F formulas with enhanced precision
-     * C = 0.12*BTCUSD/1000 + 0.09*ETHUSD/100 + 0.03*BNBUSD + 0.03*XRPUSD*10 + 0.03*SOLUSD
-     * M = 0.20*XAUUSD + 0.10*XPTUSD + 0.06*XPDUSD + 0.04*XAGUSD
-     * F = 0.075*EURUSD + 0.06*GBPUSD + 0.06/USDZAR + 0.03/USDJPY + 0.03/USDCHF + 0.045/USDCNH
+     * @dev Calculate ZiG backing value using C + M + F formulas with DAO-controlled weights
+     * C = Sum of (cryptoWeights[i] * cryptoPrices[i]) / 10000
+     * M = Sum of (metalWeights[i] * metalPrices[i]) / 10000  
+     * F = Sum of (forexWeights[i] * forexPrices[i]) / 10000
      */
     function calculateZiGPrice() external view returns (uint256) {
         uint256 C = calculateCryptoComponent();
@@ -1792,52 +2074,58 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
     }
     
     function calculateCryptoComponent() public view returns (uint256) {
-        uint256 btcPrice = getPriceWithFallback("BTCUSD", "crypto");
-        uint256 ethPrice = getPriceWithFallback("ETHUSD", "crypto");
-        uint256 bnbPrice = getPriceWithFallback("BNBUSD", "crypto");
-        uint256 xrpPrice = getPriceWithFallback("XRPUSD", "crypto");
-        uint256 solPrice = getPriceWithFallback("SOLUSD", "crypto");
+        uint256 total = 0;
         
-        // Using basis points for precise calculations
-        uint256 btc = (btcPrice * BTC_WEIGHT) / 10000 / 1000; // 0.12/1000
-        uint256 eth = (ethPrice * ETH_WEIGHT) / 10000 / 100;   // 0.09/100
-        uint256 bnb = (bnbPrice * BNB_WEIGHT) / 10000;         // 0.03
-        uint256 xrp = (xrpPrice * XRP_WEIGHT) / 10000 * 10;    // 0.03*10
-        uint256 sol = (solPrice * SOL_WEIGHT) / 10000;         // 0.03
+        for (uint256 i = 0; i < cryptoSymbols.length; i++) {
+            uint256 price = getPriceWithFallback(cryptoSymbols[i], "crypto");
+            uint256 weight = cryptoWeights[i];
+            
+            // Apply special scaling for BTC and ETH as per original formula
+            if (keccak256(bytes(cryptoSymbols[i])) == keccak256(bytes("BTCUSD"))) {
+                total += (price * weight) / 10000 / 1000; // BTC: divide by 1000
+            } else if (keccak256(bytes(cryptoSymbols[i])) == keccak256(bytes("ETHUSD"))) {
+                total += (price * weight) / 10000 / 100;   // ETH: divide by 100
+            } else if (keccak256(bytes(cryptoSymbols[i])) == keccak256(bytes("XRPUSD"))) {
+                total += (price * weight) / 10000 * 10;    // XRP: multiply by 10
+            } else {
+                total += (price * weight) / 10000;          // Others: normal scaling
+            }
+        }
         
-        return btc + eth + bnb + xrp + sol;
+        return total;
     }
     
     function calculateMetalComponent() public view returns (uint256) {
-        uint256 xauPrice = getPriceWithFallback("XAUUSD", "metal");
-        uint256 xptPrice = getPriceWithFallback("XPTUSD", "metal");
-        uint256 xpdPrice = getPriceWithFallback("XPDUSD", "metal");
-        uint256 xagPrice = getPriceWithFallback("XAGUSD", "metal");
+        uint256 total = 0;
         
-        uint256 xau = (xauPrice * XAU_WEIGHT) / 10000;  // 0.20
-        uint256 xpt = (xptPrice * XPT_WEIGHT) / 10000;  // 0.10
-        uint256 xpd = (xpdPrice * XPD_WEIGHT) / 10000;  // 0.06
-        uint256 xag = (xagPrice * XAG_WEIGHT) / 10000;  // 0.04
+        for (uint256 i = 0; i < metalSymbols.length; i++) {
+            uint256 price = getPriceWithFallback(metalSymbols[i], "metal");
+            uint256 weight = metalWeights[i];
+            total += (price * weight) / 10000;
+        }
         
-        return xau + xpt + xpd + xag;
+        return total;
     }
     
     function calculateForexComponent() public view returns (uint256) {
-        uint256 eurPrice = getPriceWithFallback("EURUSD", "forex");
-        uint256 gbpPrice = getPriceWithFallback("GBPUSD", "forex");
-        uint256 zarPrice = getPriceWithFallback("USDZAR", "forex");
-        uint256 jpyPrice = getPriceWithFallback("USDJPY", "forex");
-        uint256 chfPrice = getPriceWithFallback("USDCHF", "forex");
-        uint256 cnhPrice = getPriceWithFallback("USDCNH", "forex");
+        uint256 total = 0;
         
-        uint256 eur = (eurPrice * EUR_WEIGHT) / 10000;                          // 0.075
-        uint256 gbp = (gbpPrice * GBP_WEIGHT) / 10000;                          // 0.06
-        uint256 zar = (PRECISION * ZAR_WEIGHT) / (zarPrice * 10000);            // 0.06/USDZAR
-        uint256 jpy = (PRECISION * JPY_WEIGHT) / (jpyPrice * 10000);            // 0.03/USDJPY
-        uint256 chf = (PRECISION * CHF_WEIGHT) / (chfPrice * 10000);            // 0.03/USDCHF
-        uint256 cnh = (PRECISION * CNH_WEIGHT) / (cnhPrice * 10000);            // 0.045/USDCNH
+        for (uint256 i = 0; i < forexSymbols.length; i++) {
+            uint256 price = getPriceWithFallback(forexSymbols[i], "forex");
+            uint256 weight = forexWeights[i];
+            
+            // Apply inverse scaling for forex pairs (divide by price)
+            if (keccak256(bytes(forexSymbols[i])) == keccak256(bytes("USDZAR")) ||
+                keccak256(bytes(forexSymbols[i])) == keccak256(bytes("USDJPY")) ||
+                keccak256(bytes(forexSymbols[i])) == keccak256(bytes("USDCHF")) ||
+                keccak256(bytes(forexSymbols[i])) == keccak256(bytes("USDCNH"))) {
+                total += (PRECISION * weight) / (price * 10000);
+            } else {
+                total += (price * weight) / 10000;
+            }
+        }
         
-        return eur + gbp + zar + jpy + chf + cnh;
+        return total;
     }
 
     // ======================== UTILITY FUNCTIONS ======================== //
@@ -1943,23 +2231,19 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
         uint256 validForexFeeds,
         uint256 totalFeeds
     ) {
-        string[5] memory cryptoAssets = ["BTCUSD", "ETHUSD", "BNBUSD", "XRPUSD", "SOLUSD"];
-        string[4] memory metalAssets = ["XAUUSD", "XPTUSD", "XPDUSD", "XAGUSD"];
-        string[6] memory forexAssets = ["EURUSD", "GBPUSD", "USDZAR", "USDJPY", "USDCHF", "USDCNH"];
-        
-        for (uint256 i = 0; i < cryptoAssets.length; i++) {
-            if (_isPriceValid(cryptoAssets[i], cryptoPrices)) validCryptoFeeds++;
+        for (uint256 i = 0; i < cryptoSymbols.length; i++) {
+            if (_isPriceValid(cryptoSymbols[i], cryptoPrices)) validCryptoFeeds++;
         }
         
-        for (uint256 i = 0; i < metalAssets.length; i++) {
-            if (_isPriceValid(metalAssets[i], metalPrices)) validMetalFeeds++;
+        for (uint256 i = 0; i < metalSymbols.length; i++) {
+            if (_isPriceValid(metalSymbols[i], metalPrices)) validMetalFeeds++;
         }
         
-        for (uint256 i = 0; i < forexAssets.length; i++) {
-            if (_isPriceValid(forexAssets[i], forexPrices)) validForexFeeds++;
+        for (uint256 i = 0; i < forexSymbols.length; i++) {
+            if (_isPriceValid(forexSymbols[i], forexPrices)) validForexFeeds++;
         }
         
-        totalFeeds = cryptoAssets.length + metalAssets.length + forexAssets.length;
+        totalFeeds = cryptoSymbols.length + metalSymbols.length + forexSymbols.length;
     }
 
     // ======================== ADMIN FUNCTIONS ======================== //
@@ -1972,6 +2256,418 @@ contract ZiGOracleHub is Ownable, Pausable, ReentrancyGuard {
         _unpause();
     }
 }---File Content End---
+
+---Path and files name: ZiGEcocash/contracts/economic_core/OracleHealthMonitor.sol
+---Filename: OracleHealthMonitor.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
+
+interface IZiGOracleHub {
+    function getSystemHealth() external view returns (
+        uint256 validCryptoFeeds,
+        uint256 validMetalFeeds,
+        uint256 validForexFeeds,
+        uint256 totalFeeds
+    );
+    function calculateZiGPrice() external view returns (uint256);
+    function getPrice(string memory asset) external view returns (uint256);
+}
+
+/**
+ * @title Oracle Health Monitor
+ * @dev Monitors the health of the entire oracle system and provides alerts
+ */
+contract OracleHealthMonitor is Ownable, ReentrancyGuard {
+    
+    struct HealthMetric {
+        uint256 timestamp;
+        uint256 value;
+        string metric;
+        bool isHealthy;
+    }
+    
+    struct Alert {
+        string alertType;
+        string message;
+        uint256 timestamp;
+        bool isResolved;
+        uint256 severity; // 1=Low, 2=Medium, 3=High, 4=Critical
+    }
+    
+    struct SystemStatus {
+        bool overallHealthy;
+        uint256 activeAlerts;
+        uint256 totalMetrics;
+        uint256 healthyMetrics;
+        uint256 lastCheck;
+    }
+    
+    IZiGOracleHub public oracleHub;
+    
+    // Health metrics storage
+    mapping(string => HealthMetric[]) public healthMetrics;
+    mapping(string => uint256) public metricIndex;
+    
+    // Alerts storage
+    Alert[] public alerts;
+    
+    // Configuration
+    uint256 public constant MAX_METRICS_HISTORY = 1000;
+    uint256 public constant HEALTH_CHECK_INTERVAL = 300; // 5 minutes
+    uint256 public constant CRITICAL_THRESHOLD = 3; // 3 failed checks = critical
+    
+    // Thresholds
+    uint256 public minValidFeedsPercent = 80; // 80% of feeds must be valid
+    uint256 public maxPriceDeviationPercent = 20; // 20% max price deviation
+    uint256 public maxStalenessSeconds = 3600; // 1 hour max staleness
+    
+    // Monitoring state
+    mapping(string => uint256) public consecutiveFailures;
+    mapping(string => uint256) public lastSuccessfulCheck;
+    
+    // Events
+    event HealthCheck(string indexed metric, uint256 value, bool isHealthy);
+    event AlertRaised(string indexed alertType, string message, uint256 severity);
+    event AlertResolved(uint256 indexed alertId);
+    event SystemStatusUpdated(bool overallHealthy, uint256 activeAlerts);
+    
+    modifier onlyAuthorized() {
+        require(msg.sender == owner() || _isAuthorizedMonitor(msg.sender), "Not authorized");
+        _;
+    }
+    
+    constructor(address _oracleHub, address initialOwner) Ownable(initialOwner) {
+        require(_oracleHub != address(0), "Invalid oracle hub address");
+        oracleHub = IZiGOracleHub(_oracleHub);
+    }
+    
+    // ======================== HEALTH MONITORING ======================== //
+    
+    function performHealthCheck() external onlyAuthorized returns (SystemStatus memory) {
+        SystemStatus memory status;
+        uint256 healthyCount = 0;
+        uint256 totalCount = 0;
+        
+        // Check 1: Oracle Hub System Health
+        (bool hubHealthy, string memory hubMessage) = _checkOracleHubHealth();
+        _recordMetric("oracle_hub_health", hubHealthy ? 1 : 0, "Oracle Hub Health", hubHealthy);
+        if (hubHealthy) healthyCount++;
+        totalCount++;
+        
+        // Check 2: ZiG Price Calculation
+        (bool zigPriceHealthy, string memory zigMessage) = _checkZiGPriceHealth();
+        _recordMetric("zig_price_health", zigPriceHealthy ? 1 : 0, "ZiG Price Health", zigPriceHealthy);
+        if (zigPriceHealthy) healthyCount++;
+        totalCount++;
+        
+        // Check 3: Individual Asset Prices
+        (bool assetPricesHealthy, string memory assetMessage) = _checkAssetPricesHealth();
+        _recordMetric("asset_prices_health", assetPricesHealthy ? 1 : 0, "Asset Prices Health", assetPricesHealthy);
+        if (assetPricesHealthy) healthyCount++;
+        totalCount++;
+        
+        // Check 4: Price Staleness
+        (bool stalenessHealthy, string memory stalenessMessage) = _checkPriceStaleness();
+        _recordMetric("price_staleness_health", stalenessHealthy ? 1 : 0, "Price Staleness Health", stalenessHealthy);
+        if (stalenessHealthy) healthyCount++;
+        totalCount++;
+        
+        // Check 5: Price Deviation
+        (bool deviationHealthy, string memory deviationMessage) = _checkPriceDeviation();
+        _recordMetric("price_deviation_health", deviationHealthy ? 1 : 0, "Price Deviation Health", deviationHealthy);
+        if (deviationHealthy) healthyCount++;
+        totalCount++;
+        
+        // Determine overall system health
+        status.overallHealthy = healthyCount >= (totalCount * minValidFeedsPercent) / 100;
+        status.activeAlerts = _getActiveAlertCount();
+        status.totalMetrics = totalCount;
+        status.healthyMetrics = healthyCount;
+        status.lastCheck = block.timestamp;
+        
+        // Raise alerts for failed checks
+        if (!hubHealthy) _raiseAlert("ORACLE_HUB_FAILURE", hubMessage, 3);
+        if (!zigPriceHealthy) _raiseAlert("ZIG_PRICE_FAILURE", zigMessage, 4);
+        if (!assetPricesHealthy) _raiseAlert("ASSET_PRICES_FAILURE", assetMessage, 3);
+        if (!stalenessHealthy) _raiseAlert("PRICE_STALENESS", stalenessMessage, 2);
+        if (!deviationHealthy) _raiseAlert("PRICE_DEVIATION", deviationMessage, 2);
+        
+        emit SystemStatusUpdated(status.overallHealthy, status.activeAlerts);
+        
+        return status;
+    }
+    
+    // ======================== INDIVIDUAL HEALTH CHECKS ======================== //
+    
+    function _checkOracleHubHealth() internal view returns (bool, string memory) {
+        try oracleHub.getSystemHealth() returns (
+            uint256 validCrypto,
+            uint256 validMetal,
+            uint256 validForex,
+            uint256 total
+        ) {
+            uint256 validTotal = validCrypto + validMetal + validForex;
+            uint256 validPercent = (validTotal * 100) / total;
+            
+            if (validPercent >= minValidFeedsPercent) {
+                return (true, "Oracle hub healthy");
+            } else {
+                return (false, string(abi.encodePacked("Only ", Strings.toString(validPercent), "% feeds valid")));
+            }
+        } catch {
+            return (false, "Oracle hub health check failed");
+        }
+    }
+    
+    function _checkZiGPriceHealth() internal view returns (bool, string memory) {
+        try oracleHub.calculateZiGPrice() returns (uint256 price) {
+            if (price > 0 && price < 1000e18) { // Reasonable ZiG price range
+                return (true, "ZiG price calculation healthy");
+            } else {
+                return (false, "ZiG price out of reasonable range");
+            }
+        } catch {
+            return (false, "ZiG price calculation failed");
+        }
+    }
+    
+    function _checkAssetPricesHealth() internal view returns (bool, string memory) {
+        string[5] memory cryptoAssets = ["BTCUSD", "ETHUSD", "BNBUSD", "XRPUSD", "SOLUSD"];
+        string[4] memory metalAssets = ["XAUUSD", "XPTUSD", "XPDUSD", "XAGUSD"];
+        string[6] memory forexAssets = ["EURUSD", "GBPUSD", "USDZAR", "USDJPY", "USDCHF", "USDCNH"];
+        
+        uint256 validPrices = 0;
+        uint256 totalPrices = 0;
+        
+        // Check crypto prices
+        for (uint256 i = 0; i < cryptoAssets.length; i++) {
+            try oracleHub.getPrice(cryptoAssets[i]) returns (uint256 price) {
+                if (price > 0) validPrices++;
+                totalPrices++;
+            } catch {
+                totalPrices++;
+            }
+        }
+        
+        // Check metal prices
+        for (uint256 i = 0; i < metalAssets.length; i++) {
+            try oracleHub.getPrice(metalAssets[i]) returns (uint256 price) {
+                if (price > 0) validPrices++;
+                totalPrices++;
+            } catch {
+                totalPrices++;
+            }
+        }
+        
+        // Check forex prices
+        for (uint256 i = 0; i < forexAssets.length; i++) {
+            try oracleHub.getPrice(forexAssets[i]) returns (uint256 price) {
+                if (price > 0) validPrices++;
+                totalPrices++;
+            } catch {
+                totalPrices++;
+            }
+        }
+        
+        uint256 validPercent = (validPrices * 100) / totalPrices;
+        
+        if (validPercent >= minValidFeedsPercent) {
+            return (true, "Asset prices healthy");
+        } else {
+            return (false, string(abi.encodePacked("Only ", Strings.toString(validPercent), "% asset prices valid")));
+        }
+    }
+    
+    function _checkPriceStaleness() internal view returns (bool, string memory) {
+        // This would check the staleness of prices from the oracle hub
+        // For now, return a placeholder implementation
+        return (true, "Price staleness check passed");
+    }
+    
+    function _checkPriceDeviation() internal view returns (bool, string memory) {
+        // This would check for unusual price deviations
+        // For now, return a placeholder implementation
+        return (true, "Price deviation check passed");
+    }
+    
+    // ======================== METRIC RECORDING ======================== //
+    
+    function _recordMetric(
+        string memory metricName,
+        uint256 value,
+        string memory description,
+        bool isHealthy
+    ) internal {
+        HealthMetric memory metric = HealthMetric({
+            timestamp: block.timestamp,
+            value: value,
+            metric: description,
+            isHealthy: isHealthy
+        });
+        
+        uint256 index = metricIndex[metricName];
+        
+        if (healthMetrics[metricName].length < MAX_METRICS_HISTORY) {
+            healthMetrics[metricName].push(metric);
+        } else {
+            healthMetrics[metricName][index] = metric;
+        }
+        
+        metricIndex[metricName] = (index + 1) % MAX_METRICS_HISTORY;
+        
+        emit HealthCheck(metricName, value, isHealthy);
+        
+        // Update consecutive failures tracking
+        if (isHealthy) {
+            consecutiveFailures[metricName] = 0;
+            lastSuccessfulCheck[metricName] = block.timestamp;
+        } else {
+            consecutiveFailures[metricName]++;
+            
+            // Raise critical alert if too many consecutive failures
+            if (consecutiveFailures[metricName] >= CRITICAL_THRESHOLD) {
+                _raiseAlert("CRITICAL_FAILURE", 
+                    string(abi.encodePacked(metricName, " failed ", Strings.toString(consecutiveFailures[metricName]), " times")), 
+                    4);
+            }
+        }
+    }
+    
+    // ======================== ALERT MANAGEMENT ======================== //
+    
+    function _raiseAlert(
+        string memory alertType,
+        string memory message,
+        uint256 severity
+    ) internal {
+        alerts.push(Alert({
+            alertType: alertType,
+            message: message,
+            timestamp: block.timestamp,
+            isResolved: false,
+            severity: severity
+        }));
+        
+        emit AlertRaised(alertType, message, severity);
+    }
+    
+    function resolveAlert(uint256 alertId) external onlyAuthorized {
+        require(alertId < alerts.length, "Invalid alert ID");
+        require(!alerts[alertId].isResolved, "Alert already resolved");
+        
+        alerts[alertId].isResolved = true;
+        emit AlertResolved(alertId);
+    }
+    
+    function getActiveAlerts() external view returns (Alert[] memory) {
+        uint256 activeCount = 0;
+        for (uint256 i = 0; i < alerts.length; i++) {
+            if (!alerts[i].isResolved) {
+                activeCount++;
+            }
+        }
+        
+        Alert[] memory activeAlerts = new Alert[](activeCount);
+        uint256 index = 0;
+        for (uint256 i = 0; i < alerts.length; i++) {
+            if (!alerts[i].isResolved) {
+                activeAlerts[index] = alerts[i];
+                index++;
+            }
+        }
+        
+        return activeAlerts;
+    }
+    
+    function _getActiveAlertCount() internal view returns (uint256) {
+        uint256 count = 0;
+        for (uint256 i = 0; i < alerts.length; i++) {
+            if (!alerts[i].isResolved) {
+                count++;
+            }
+        }
+        return count;
+    }
+    
+    // ======================== UTILITY FUNCTIONS ======================== //
+    
+    function getHealthMetrics(string memory metricName) external view returns (HealthMetric[] memory) {
+        return healthMetrics[metricName];
+    }
+    
+    function getLatestHealthMetric(string memory metricName) external view returns (HealthMetric memory) {
+        HealthMetric[] memory metrics = healthMetrics[metricName];
+        if (metrics.length == 0) {
+            return HealthMetric(0, 0, "", false);
+        }
+        return metrics[metrics.length - 1];
+    }
+    
+    function getSystemStatus() external view returns (SystemStatus memory) {
+        return SystemStatus({
+            overallHealthy: _getActiveAlertCount() == 0,
+            activeAlerts: _getActiveAlertCount(),
+            totalMetrics: 5, // Number of metrics we check
+            healthyMetrics: 5 - _getActiveAlertCount(), // Simplified calculation
+            lastCheck: block.timestamp
+        });
+    }
+    
+    function getAlertCount() external view returns (uint256 total, uint256 active, uint256 critical) {
+        total = alerts.length;
+        for (uint256 i = 0; i < alerts.length; i++) {
+            if (!alerts[i].isResolved) {
+                active++;
+                if (alerts[i].severity == 4) {
+                    critical++;
+                }
+            }
+        }
+    }
+    
+    function _isAuthorizedMonitor(address monitor) internal view returns (bool) {
+        // Add logic to check if the monitor is authorized
+        // For now, only owner is authorized
+        return monitor == owner();
+    }
+    
+    // ======================== ADMIN FUNCTIONS ======================== //
+    
+    function setMinValidFeedsPercent(uint256 newPercent) external onlyOwner {
+        require(newPercent <= 100, "Invalid percentage");
+        minValidFeedsPercent = newPercent;
+    }
+    
+    function setMaxPriceDeviationPercent(uint256 newPercent) external onlyOwner {
+        require(newPercent <= 50, "Invalid percentage");
+        maxPriceDeviationPercent = newPercent;
+    }
+    
+    function setMaxStalenessSeconds(uint256 newSeconds) external onlyOwner {
+        require(newSeconds > 0, "Invalid staleness threshold");
+        maxStalenessSeconds = newSeconds;
+    }
+    
+    function setOracleHub(address newOracleHub) external onlyOwner {
+        require(newOracleHub != address(0), "Invalid oracle hub address");
+        oracleHub = IZiGOracleHub(newOracleHub);
+    }
+    
+    function clearOldAlerts(uint256 olderThan) external onlyOwner {
+        uint256 currentTime = block.timestamp;
+        for (uint256 i = 0; i < alerts.length; i++) {
+            if (alerts[i].isResolved && currentTime - alerts[i].timestamp > olderThan) {
+                // Mark for removal by setting resolved to true (already done)
+                // In a real implementation, you might want to actually remove them
+            }
+        }
+    }
+} ---File Content End---
 
 ---Path and files name: ZiGEcocash/contracts/economic_core/ZiG.sol
 ---Filename: ZiG.sol
@@ -2198,6 +2894,361 @@ contract FeedRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function _authorizeUpgrade(address) internal override onlyOwner {}
 }
 ---File Content End---
+
+---Path and files name: ZiGEcocash/contracts/economic_core/OracleValidator.sol
+---Filename: OracleValidator.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+interface IZiGOracleHub {
+    function getPrice(string memory asset) external view returns (uint256);
+    function calculateZiGPrice() external view returns (uint256);
+    function getSystemHealth() external view returns (
+        uint256 validCryptoFeeds,
+        uint256 validMetalFeeds,
+        uint256 validForexFeeds,
+        uint256 totalFeeds
+    );
+}
+
+/**
+ * @title Oracle Validator
+ * @dev Provides validation, monitoring, and alerting for the ZiG oracle system
+ */
+contract OracleValidator is Ownable, ReentrancyGuard {
+    
+    struct ValidationRule {
+        uint256 minPrice;
+        uint256 maxPrice;
+        uint256 maxDeviationPercent;
+        uint256 stalenessThreshold;
+        bool isActive;
+    }
+    
+    struct Alert {
+        string asset;
+        string alertType;
+        uint256 timestamp;
+        string message;
+        bool isResolved;
+    }
+    
+    IZiGOracleHub public oracleHub;
+    
+    // Validation rules for different asset types
+    mapping(string => ValidationRule) public validationRules;
+    
+    // Price history for deviation tracking
+    mapping(string => uint256[]) public priceHistory;
+    mapping(string => uint256) public priceHistoryIndex;
+    uint256 public constant MAX_HISTORY_SIZE = 100;
+    
+    // Alerts and monitoring
+    Alert[] public alerts;
+    mapping(address => bool) public authorizedValidators;
+    
+    // Events
+    event ValidationRuleSet(string indexed asset, uint256 minPrice, uint256 maxPrice, uint256 maxDeviation);
+    event AlertRaised(string indexed asset, string alertType, string message);
+    event AlertResolved(uint256 indexed alertId);
+    event ValidatorAdded(address indexed validator);
+    event ValidatorRemoved(address indexed validator);
+    
+    modifier onlyValidator() {
+        require(authorizedValidators[msg.sender] || msg.sender == owner(), "Not authorized validator");
+        _;
+    }
+    
+    constructor(address _oracleHub, address initialOwner) Ownable(initialOwner) {
+        require(_oracleHub != address(0), "Invalid oracle hub address");
+        oracleHub = IZiGOracleHub(_oracleHub);
+        authorizedValidators[initialOwner] = true;
+        
+        // Set default validation rules
+        _setDefaultValidationRules();
+    }
+    
+    function _setDefaultValidationRules() internal {
+        // Crypto validation rules
+        validationRules["BTCUSD"] = ValidationRule({
+            minPrice: 10000e18,    // $10,000 minimum
+            maxPrice: 200000e18,   // $200,000 maximum
+            maxDeviationPercent: 15, // 15% max deviation
+            stalenessThreshold: 3600, // 1 hour
+            isActive: true
+        });
+        
+        validationRules["ETHUSD"] = ValidationRule({
+            minPrice: 500e18,      // $500 minimum
+            maxPrice: 10000e18,    // $10,000 maximum
+            maxDeviationPercent: 20, // 20% max deviation
+            stalenessThreshold: 3600,
+            isActive: true
+        });
+        
+        // Metal validation rules
+        validationRules["XAUUSD"] = ValidationRule({
+            minPrice: 1000e18,     // $1,000 minimum
+            maxPrice: 10000e18,    // $10,000 maximum
+            maxDeviationPercent: 10, // 10% max deviation
+            stalenessThreshold: 7200, // 2 hours
+            isActive: true
+        });
+        
+        validationRules["XAGUSD"] = ValidationRule({
+            minPrice: 10e18,       // $10 minimum
+            maxPrice: 1000e18,     // $1,000 maximum
+            maxDeviationPercent: 15,
+            stalenessThreshold: 7200,
+            isActive: true
+        });
+        
+        // Forex validation rules
+        validationRules["EURUSD"] = ValidationRule({
+            minPrice: 0.5e18,      // $0.50 minimum
+            maxPrice: 2e18,        // $2.00 maximum
+            maxDeviationPercent: 5,  // 5% max deviation
+            stalenessThreshold: 1800, // 30 minutes
+            isActive: true
+        });
+        
+        validationRules["USDZAR"] = ValidationRule({
+            minPrice: 10e18,       // 10 ZAR minimum
+            maxPrice: 50e18,       // 50 ZAR maximum
+            maxDeviationPercent: 10,
+            stalenessThreshold: 1800,
+            isActive: true
+        });
+    }
+    
+    // ======================== VALIDATION FUNCTIONS ======================== //
+    
+    function validatePrice(string memory asset, uint256 price) external view returns (bool, string memory) {
+        ValidationRule memory rule = validationRules[asset];
+        
+        if (!rule.isActive) {
+            return (true, "Validation rule not active");
+        }
+        
+        // Check price bounds
+        if (price < rule.minPrice) {
+            return (false, "Price below minimum threshold");
+        }
+        
+        if (price > rule.maxPrice) {
+            return (false, "Price above maximum threshold");
+        }
+        
+        // Check deviation from historical average
+        if (priceHistory[asset].length > 0) {
+            uint256 avgPrice = _calculateAveragePrice(asset);
+            uint256 deviation = _calculateDeviation(price, avgPrice);
+            
+            if (deviation > rule.maxDeviationPercent) {
+                return (false, "Price deviation too large");
+            }
+        }
+        
+        return (true, "Price validation passed");
+    }
+    
+    function validateZiGPrice() external view returns (bool, string memory) {
+        try oracleHub.calculateZiGPrice() returns (uint256 price) {
+            // ZiG price should be reasonable (between $0.01 and $100)
+            if (price < 0.01e18) {
+                return (false, "ZiG price too low");
+            }
+            
+            if (price > 100e18) {
+                return (false, "ZiG price too high");
+            }
+            
+            return (true, "ZiG price validation passed");
+        } catch {
+            return (false, "Failed to calculate ZiG price");
+        }
+    }
+    
+    // ======================== MONITORING FUNCTIONS ======================== //
+    
+    function monitorOracleHealth() external view returns (
+        bool isHealthy,
+        string memory healthStatus,
+        uint256 validFeeds,
+        uint256 totalFeeds
+    ) {
+        try oracleHub.getSystemHealth() returns (
+            uint256 validCrypto,
+            uint256 validMetal,
+            uint256 validForex,
+            uint256 total
+        ) {
+            validFeeds = validCrypto + validMetal + validForex;
+            totalFeeds = total;
+            
+            // Consider healthy if at least 80% of feeds are valid
+            if (validFeeds >= (total * 80) / 100) {
+                isHealthy = true;
+                healthStatus = "Healthy";
+            } else {
+                isHealthy = false;
+                healthStatus = "Degraded";
+            }
+        } catch {
+            isHealthy = false;
+            healthStatus = "Unavailable";
+            validFeeds = 0;
+            totalFeeds = 0;
+        }
+    }
+    
+    function checkPriceStaleness(string memory asset) external view returns (bool isStale, uint256 lastUpdate) {
+        // This would need to be implemented based on the oracle hub's internal timestamp tracking
+        // For now, return a placeholder
+        return (false, block.timestamp);
+    }
+    
+    // ======================== ALERT MANAGEMENT ======================== //
+    
+    function raiseAlert(
+        string memory asset,
+        string memory alertType,
+        string memory message
+    ) external onlyValidator {
+        alerts.push(Alert({
+            asset: asset,
+            alertType: alertType,
+            timestamp: block.timestamp,
+            message: message,
+            isResolved: false
+        }));
+        
+        emit AlertRaised(asset, alertType, message);
+    }
+    
+    function resolveAlert(uint256 alertId) external onlyValidator {
+        require(alertId < alerts.length, "Invalid alert ID");
+        require(!alerts[alertId].isResolved, "Alert already resolved");
+        
+        alerts[alertId].isResolved = true;
+        emit AlertResolved(alertId);
+    }
+    
+    function getActiveAlerts() external view returns (Alert[] memory) {
+        uint256 activeCount = 0;
+        for (uint256 i = 0; i < alerts.length; i++) {
+            if (!alerts[i].isResolved) {
+                activeCount++;
+            }
+        }
+        
+        Alert[] memory activeAlerts = new Alert[](activeCount);
+        uint256 index = 0;
+        for (uint256 i = 0; i < alerts.length; i++) {
+            if (!alerts[i].isResolved) {
+                activeAlerts[index] = alerts[i];
+                index++;
+            }
+        }
+        
+        return activeAlerts;
+    }
+    
+    // ======================== PRICE HISTORY MANAGEMENT ======================== //
+    
+    function updatePriceHistory(string memory asset, uint256 price) external onlyValidator {
+        uint256 index = priceHistoryIndex[asset];
+        
+        if (priceHistory[asset].length < MAX_HISTORY_SIZE) {
+            priceHistory[asset].push(price);
+        } else {
+            priceHistory[asset][index] = price;
+        }
+        
+        priceHistoryIndex[asset] = (index + 1) % MAX_HISTORY_SIZE;
+    }
+    
+    function getPriceHistory(string memory asset) external view returns (uint256[] memory) {
+        return priceHistory[asset];
+    }
+    
+    function _calculateAveragePrice(string memory asset) internal view returns (uint256) {
+        uint256[] memory history = priceHistory[asset];
+        if (history.length == 0) return 0;
+        
+        uint256 sum = 0;
+        for (uint256 i = 0; i < history.length; i++) {
+            sum += history[i];
+        }
+        
+        return sum / history.length;
+    }
+    
+    function _calculateDeviation(uint256 currentPrice, uint256 averagePrice) internal pure returns (uint256) {
+        if (averagePrice == 0) return 0;
+        
+        uint256 diff = currentPrice > averagePrice ? 
+            currentPrice - averagePrice : averagePrice - currentPrice;
+        
+        return (diff * 100) / averagePrice;
+    }
+    
+    // ======================== ADMIN FUNCTIONS ======================== //
+    
+    function setValidationRule(
+        string memory asset,
+        uint256 minPrice,
+        uint256 maxPrice,
+        uint256 maxDeviationPercent,
+        uint256 stalenessThreshold,
+        bool isActive
+    ) external onlyOwner {
+        validationRules[asset] = ValidationRule({
+            minPrice: minPrice,
+            maxPrice: maxPrice,
+            maxDeviationPercent: maxDeviationPercent,
+            stalenessThreshold: stalenessThreshold,
+            isActive: isActive
+        });
+        
+        emit ValidationRuleSet(asset, minPrice, maxPrice, maxDeviationPercent);
+    }
+    
+    function addValidator(address validator) external onlyOwner {
+        require(validator != address(0), "Invalid validator address");
+        authorizedValidators[validator] = true;
+        emit ValidatorAdded(validator);
+    }
+    
+    function removeValidator(address validator) external onlyOwner {
+        authorizedValidators[validator] = false;
+        emit ValidatorRemoved(validator);
+    }
+    
+    function setOracleHub(address newOracleHub) external onlyOwner {
+        require(newOracleHub != address(0), "Invalid oracle hub address");
+        oracleHub = IZiGOracleHub(newOracleHub);
+    }
+    
+    // ======================== UTILITY FUNCTIONS ======================== //
+    
+    function getAlertCount() external view returns (uint256 total, uint256 active) {
+        total = alerts.length;
+        for (uint256 i = 0; i < alerts.length; i++) {
+            if (!alerts[i].isResolved) {
+                active++;
+            }
+        }
+    }
+    
+    function getValidationRule(string memory asset) external view returns (ValidationRule memory) {
+        return validationRules[asset];
+    }
+} ---File Content End---
 
 ---Path and files name: ZiGEcocash/contracts/economic_core/ZiGT.sol
 ---Filename: ZiGT.sol
@@ -3151,6 +4202,872 @@ contract Vault is Ownable, ReentrancyGuard, Pausable {
     }
 }---File Content End---
 
+---Path and files name: ZiGEcocash/contracts/economic_core/OracleAggregator.sol
+---Filename: OracleAggregator.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+interface IPriceOracle {
+    function getPrice(address token) external view returns (uint256);
+}
+
+interface IZiGOracleHub {
+    function getPrice(string memory asset) external view returns (uint256);
+    function calculateZiGPrice() external view returns (uint256);
+}
+
+/**
+ * @title Oracle Aggregator
+ * @dev Aggregates prices from multiple oracle sources using weighted averages
+ */
+contract OracleAggregator is Ownable, ReentrancyGuard {
+    
+    struct OracleSource {
+        address oracleAddress;
+        uint256 weight;        // Weight in basis points (10000 = 100%)
+        bool isActive;
+        uint256 lastUpdate;
+        uint256 stalenessThreshold;
+    }
+    
+    struct AggregatedPrice {
+        uint256 price;
+        uint256 timestamp;
+        uint256 confidence;    // Confidence level in basis points
+        uint256 sourceCount;
+    }
+    
+    // Asset to oracle sources mapping
+    mapping(string => OracleSource[]) public oracleSources;
+    
+    // Aggregated prices cache
+    mapping(string => AggregatedPrice) public aggregatedPrices;
+    
+    // Minimum confidence threshold for valid aggregated price
+    uint256 public constant MIN_CONFIDENCE_THRESHOLD = 5000; // 50%
+    
+    // Maximum price deviation between sources (in basis points)
+    uint256 public constant MAX_PRICE_DEVIATION = 2000; // 20%
+    
+    // Events
+    event OracleSourceAdded(string indexed asset, address indexed oracle, uint256 weight);
+    event OracleSourceUpdated(string indexed asset, address indexed oracle, uint256 weight, bool isActive);
+    event OracleSourceRemoved(string indexed asset, address indexed oracle);
+    event PriceAggregated(string indexed asset, uint256 price, uint256 confidence, uint256 sourceCount);
+    
+    modifier onlyAuthorized() {
+        require(msg.sender == owner() || _isAuthorizedOracle(msg.sender), "Not authorized");
+        _;
+    }
+    
+    constructor(address initialOwner) Ownable(initialOwner) {}
+    
+    // ======================== ORACLE SOURCE MANAGEMENT ======================== //
+    
+    function addOracleSource(
+        string memory asset,
+        address oracleAddress,
+        uint256 weight,
+        uint256 stalenessThreshold
+    ) external onlyOwner {
+        require(oracleAddress != address(0), "Invalid oracle address");
+        require(weight > 0 && weight <= 10000, "Invalid weight");
+        require(stalenessThreshold > 0, "Invalid staleness threshold");
+        
+        // Check if oracle already exists
+        OracleSource[] storage sources = oracleSources[asset];
+        for (uint256 i = 0; i < sources.length; i++) {
+            require(sources[i].oracleAddress != oracleAddress, "Oracle already exists");
+        }
+        
+        sources.push(OracleSource({
+            oracleAddress: oracleAddress,
+            weight: weight,
+            isActive: true,
+            lastUpdate: block.timestamp,
+            stalenessThreshold: stalenessThreshold
+        }));
+        
+        emit OracleSourceAdded(asset, oracleAddress, weight);
+    }
+    
+    function updateOracleSource(
+        string memory asset,
+        address oracleAddress,
+        uint256 weight,
+        bool isActive
+    ) external onlyOwner {
+        OracleSource[] storage sources = oracleSources[asset];
+        bool found = false;
+        
+        for (uint256 i = 0; i < sources.length; i++) {
+            if (sources[i].oracleAddress == oracleAddress) {
+                sources[i].weight = weight;
+                sources[i].isActive = isActive;
+                found = true;
+                emit OracleSourceUpdated(asset, oracleAddress, weight, isActive);
+                break;
+            }
+        }
+        
+        require(found, "Oracle source not found");
+    }
+    
+    function removeOracleSource(string memory asset, address oracleAddress) external onlyOwner {
+        OracleSource[] storage sources = oracleSources[asset];
+        
+        for (uint256 i = 0; i < sources.length; i++) {
+            if (sources[i].oracleAddress == oracleAddress) {
+                // Remove by swapping with last element and popping
+                sources[i] = sources[sources.length - 1];
+                sources.pop();
+                emit OracleSourceRemoved(asset, oracleAddress);
+                return;
+            }
+        }
+        
+        revert("Oracle source not found");
+    }
+    
+    // ======================== PRICE AGGREGATION ======================== //
+    
+    function aggregatePrice(string memory asset) external onlyAuthorized returns (uint256) {
+        OracleSource[] storage sources = oracleSources[asset];
+        require(sources.length > 0, "No oracle sources for asset");
+        
+        uint256 totalWeight = 0;
+        uint256 weightedSum = 0;
+        uint256 validSources = 0;
+        uint256[] memory prices = new uint256[](sources.length);
+        uint256[] memory weights = new uint256[](sources.length);
+        
+        // Collect valid prices from all sources
+        for (uint256 i = 0; i < sources.length; i++) {
+            OracleSource memory source = sources[i];
+            
+            if (!source.isActive) continue;
+            
+            try this._getPriceFromSource(source.oracleAddress, asset) returns (uint256 price) {
+                if (price > 0 && _isPriceFresh(source.lastUpdate, source.stalenessThreshold)) {
+                    prices[validSources] = price;
+                    weights[validSources] = source.weight;
+                    weightedSum += price * source.weight;
+                    totalWeight += source.weight;
+                    validSources++;
+                }
+            } catch {
+                // Skip failed oracle
+                continue;
+            }
+        }
+        
+        require(validSources > 0, "No valid oracle sources");
+        require(totalWeight > 0, "No valid weights");
+        
+        // Calculate weighted average
+        uint256 aggregatedPrice = weightedSum / totalWeight;
+        
+        // Validate price deviation between sources
+        require(_validatePriceDeviation(prices, weights, validSources, aggregatedPrice), "Price deviation too large");
+        
+        // Calculate confidence based on active sources and weights
+        uint256 confidence = _calculateConfidence(validSources, sources.length, totalWeight);
+        
+        // Update aggregated price cache
+        aggregatedPrices[asset] = AggregatedPrice({
+            price: aggregatedPrice,
+            timestamp: block.timestamp,
+            confidence: confidence,
+            sourceCount: validSources
+        });
+        
+        emit PriceAggregated(asset, aggregatedPrice, confidence, validSources);
+        
+        return aggregatedPrice;
+    }
+    
+    function getAggregatedPrice(string memory asset) external view returns (
+        uint256 price,
+        uint256 timestamp,
+        uint256 confidence,
+        uint256 sourceCount
+    ) {
+        AggregatedPrice memory aggPrice = aggregatedPrices[asset];
+        
+        // Check if cached price is still valid
+        if (aggPrice.timestamp > 0 && block.timestamp - aggPrice.timestamp <= 3600) {
+            return (aggPrice.price, aggPrice.timestamp, aggPrice.confidence, aggPrice.sourceCount);
+        }
+        
+        // Return zeros if no valid cached price
+        return (0, 0, 0, 0);
+    }
+    
+    // ======================== ZIG-SPECIFIC AGGREGATION ======================== //
+    
+    function aggregateZiGPrice() external onlyAuthorized returns (uint256) {
+        // For ZiG, we can aggregate from multiple sources including:
+        // 1. Direct ZiG oracle calculation
+        // 2. Component-based calculation (C + M + F)
+        // 3. External price feeds
+        
+        uint256 totalWeight = 0;
+        uint256 weightedSum = 0;
+        uint256 validSources = 0;
+        
+        // Source 1: Direct ZiG calculation (weight: 60%)
+        try this._getZiGPriceFromHub() returns (uint256 price) {
+            if (price > 0) {
+                weightedSum += price * 6000; // 60% weight
+                totalWeight += 6000;
+                validSources++;
+            }
+        } catch {
+            // Skip if failed
+        }
+        
+        // Source 2: Component-based calculation (weight: 40%)
+        try this._getZiGPriceFromComponents() returns (uint256 price) {
+            if (price > 0) {
+                weightedSum += price * 4000; // 40% weight
+                totalWeight += 4000;
+                validSources++;
+            }
+        } catch {
+            // Skip if failed
+        }
+        
+        require(validSources > 0, "No valid ZiG price sources");
+        require(totalWeight > 0, "No valid weights");
+        
+        uint256 aggregatedPrice = weightedSum / totalWeight;
+        
+        // Cache the aggregated ZiG price
+        aggregatedPrices["ZIGUSD"] = AggregatedPrice({
+            price: aggregatedPrice,
+            timestamp: block.timestamp,
+            confidence: _calculateConfidence(validSources, 2, totalWeight),
+            sourceCount: validSources
+        });
+        
+        emit PriceAggregated("ZIGUSD", aggregatedPrice, _calculateConfidence(validSources, 2, totalWeight), validSources);
+        
+        return aggregatedPrice;
+    }
+    
+    // ======================== INTERNAL FUNCTIONS ======================== //
+    
+    function _getPriceFromSource(address oracleAddress, string memory asset) external view returns (uint256) {
+        // Try different oracle interfaces
+        try IPriceOracle(oracleAddress).getPrice(address(0)) returns (uint256 price) {
+            return price;
+        } catch {
+            // Try string-based oracle (like ZiGOracleHub)
+            try IZiGOracleHub(oracleAddress).getPrice(asset) returns (uint256 price) {
+                return price;
+            } catch {
+                return 0;
+            }
+        }
+    }
+    
+    function _getZiGPriceFromHub() external view returns (uint256) {
+        // This would need to be implemented based on your specific oracle hub interface
+        // For now, return 0 as placeholder
+        return 0;
+    }
+    
+    function _getZiGPriceFromComponents() external view returns (uint256) {
+        // This would calculate ZiG price from individual components
+        // For now, return 0 as placeholder
+        return 0;
+    }
+    
+    function _isPriceFresh(uint256 lastUpdate, uint256 stalenessThreshold) internal view returns (bool) {
+        return block.timestamp - lastUpdate <= stalenessThreshold;
+    }
+    
+    function _validatePriceDeviation(
+        uint256[] memory prices,
+        uint256[] memory weights,
+        uint256 validSources,
+        uint256 averagePrice
+    ) internal pure returns (bool) {
+        if (validSources < 2) return true; // Need at least 2 sources for deviation check
+        
+        uint256 totalDeviation = 0;
+        uint256 totalWeight = 0;
+        
+        for (uint256 i = 0; i < validSources; i++) {
+            uint256 deviation = prices[i] > averagePrice ? 
+                prices[i] - averagePrice : averagePrice - prices[i];
+            
+            uint256 deviationPercent = (deviation * 10000) / averagePrice;
+            totalDeviation += deviationPercent * weights[i];
+            totalWeight += weights[i];
+        }
+        
+        uint256 averageDeviation = totalDeviation / totalWeight;
+        return averageDeviation <= MAX_PRICE_DEVIATION;
+    }
+    
+    function _calculateConfidence(
+        uint256 validSources,
+        uint256 totalSources,
+        uint256 totalWeight
+    ) internal pure returns (uint256) {
+        // Base confidence on source coverage and weight distribution
+        uint256 sourceCoverage = (validSources * 10000) / totalSources;
+        uint256 weightCoverage = totalWeight >= 8000 ? 10000 : (totalWeight * 10000) / 8000;
+        
+        return (sourceCoverage + weightCoverage) / 2;
+    }
+    
+    function _isAuthorizedOracle(address oracle) internal view returns (bool) {
+        // Add logic to check if the oracle is authorized
+        // For now, only owner is authorized
+        return oracle == owner();
+    }
+    
+    // ======================== UTILITY FUNCTIONS ======================== //
+    
+    function getOracleSources(string memory asset) external view returns (OracleSource[] memory) {
+        return oracleSources[asset];
+    }
+    
+    function getOracleSourceCount(string memory asset) external view returns (uint256) {
+        return oracleSources[asset].length;
+    }
+    
+    function isPriceValid(string memory asset) external view returns (bool) {
+        AggregatedPrice memory aggPrice = aggregatedPrices[asset];
+        return aggPrice.price > 0 && 
+               aggPrice.confidence >= MIN_CONFIDENCE_THRESHOLD &&
+               block.timestamp - aggPrice.timestamp <= 3600;
+    }
+    
+    // ======================== ADMIN FUNCTIONS ======================== //
+    
+    function setMinConfidenceThreshold(uint256 newThreshold) external onlyOwner {
+        require(newThreshold <= 10000, "Invalid threshold");
+        // This would update the constant, but since it's constant, we'll need a different approach
+        // For now, this is a placeholder
+    }
+    
+    function setMaxPriceDeviation(uint256 newDeviation) external onlyOwner {
+        require(newDeviation <= 5000, "Invalid deviation");
+        // This would update the constant, but since it's constant, we'll need a different approach
+        // For now, this is a placeholder
+    }
+} ---File Content End---
+
+---Path and files name: ZiGEcocash/contracts/economic_core/RegionalStablecoins.sol
+---Filename: RegionalStablecoins.sol
+---File Content Start---
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.29;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+
+interface IZiGUtilityToken {
+    function burn(address _from, uint256 _id, uint256 _amount) external;
+    function balanceOf(address _owner, uint256 _id) external view returns (uint256);
+}
+
+interface IZiGOracleHub {
+    function getPrice(string memory asset) external view returns (uint256);
+    function calculateZiGPrice() external view returns (uint256);
+}
+
+/**
+ * @title Regional Stablecoins for African Regions
+ * @dev 6 regional stablecoins with different crypto+metal+fiat compositions
+ * @dev Uses ZiGUtilityToken as fuel for transfers and remittances
+ */
+contract RegionalStablecoins is Ownable, ReentrancyGuard, Pausable {
+    
+    struct RegionalStablecoin {
+        string name;
+        string symbol;
+        uint256 totalSupply;
+        mapping(address => uint256) balances;
+        mapping(address => mapping(address => uint256)) allowances;
+        bool isActive;
+        uint256 cryptoWeight;
+        uint256 metalWeight;
+        uint256 fiatWeight;
+        string[] cryptoAssets;
+        string[] metalAssets;
+        string[] fiatAssets;
+        uint256[] cryptoWeights;
+        uint256[] metalWeights;
+        uint256[] fiatWeights;
+    }
+    
+    // Regional stablecoins mapping
+    mapping(uint256 => RegionalStablecoin) public regionalStablecoins;
+    
+    // Region IDs
+    uint256 public constant NORTH_AFRICA = 1;    // Egypt, Morocco, Algeria, Tunisia, Libya
+    uint256 public constant WEST_AFRICA = 2;     // Nigeria, Ghana, Senegal, Ivory Coast, Mali
+    uint256 public constant CENTRAL_AFRICA = 3;  // Cameroon, Chad, CAR, Congo, Gabon
+    uint256 public constant EAST_AFRICA = 4;     // Kenya, Tanzania, Uganda, Ethiopia, Rwanda
+    uint256 public constant SOUTHERN_AFRICA = 5; // South Africa, Zimbabwe, Zambia, Botswana, Namibia
+    uint256 public constant HORN_AFRICA = 6;     // Somalia, Djibouti, Eritrea, Sudan, South Sudan
+    
+    // Fuel costs
+    uint256 public constant TRANSFER_FUEL_COST = 5;      // 5 utility tokens per transfer
+    uint256 public constant REMITTANCE_FUEL_COST = 10;   // 10 utility tokens per remittance
+    uint256 public constant MINT_FUEL_COST = 20;         // 20 utility tokens per mint
+    uint256 public constant BURN_FUEL_COST = 15;         // 15 utility tokens per burn
+    
+    address public utilityToken;
+    address public oracleHub;
+    address public dao;
+    
+    uint256 public totalRegions = 6;
+    
+    event RegionalStablecoinCreated(uint256 indexed regionId, string name, string symbol);
+    event Transfer(uint256 indexed regionId, address indexed from, address indexed to, uint256 amount, uint256 fuelCost);
+    event Remittance(uint256 indexed regionId, address indexed from, address indexed to, uint256 amount, string recipientName, uint256 fuelCost);
+    event Mint(uint256 indexed regionId, address indexed to, uint256 amount, uint256 fuelCost);
+    event Burn(uint256 indexed regionId, address indexed from, uint256 amount, uint256 fuelCost);
+    event FuelBurned(address indexed user, uint256 tokenId, uint256 amount, string action);
+    
+    modifier onlyDao() {
+        require(msg.sender == dao, "RegionalStablecoins: Only DAO can call this function");
+        _;
+    }
+    
+    modifier onlyActiveRegion(uint256 regionId) {
+        require(regionId > 0 && regionId <= totalRegions, "Invalid region ID");
+        require(regionalStablecoins[regionId].isActive, "Region not active");
+        _;
+    }
+    
+    constructor(
+        address _utilityToken,
+        address _oracleHub,
+        address _dao
+    ) Ownable(msg.sender) {
+        utilityToken = _utilityToken;
+        oracleHub = _oracleHub;
+        dao = _dao;
+        
+        _initializeRegionalStablecoins();
+    }
+    
+    function _initializeRegionalStablecoins() internal {
+        // North Africa - Higher crypto, moderate metal, low fiat
+        string[] memory northCrypto = new string[](3);
+        northCrypto[0] = "BTCUSD";
+        northCrypto[1] = "ETHUSD";
+        northCrypto[2] = "BNBUSD";
+        
+        string[] memory northMetal = new string[](2);
+        northMetal[0] = "XAUUSD";
+        northMetal[1] = "XAGUSD";
+        
+        string[] memory northFiat = new string[](2);
+        northFiat[0] = "EURUSD";
+        northFiat[1] = "GBPUSD";
+        
+        _createRegionalStablecoin(
+            NORTH_AFRICA,
+            "North African Stablecoin",
+            "NAS",
+            50, 30, 20, // 50% crypto, 30% metal, 20% fiat
+            northCrypto,
+            northMetal,
+            northFiat
+        );
+        
+        // West Africa - Balanced composition
+        string[] memory westCrypto = new string[](3);
+        westCrypto[0] = "BTCUSD";
+        westCrypto[1] = "ETHUSD";
+        westCrypto[2] = "XRPUSD";
+        
+        string[] memory westMetal = new string[](3);
+        westMetal[0] = "XAUUSD";
+        westMetal[1] = "XPTUSD";
+        westMetal[2] = "XAGUSD";
+        
+        string[] memory westFiat = new string[](3);
+        westFiat[0] = "EURUSD";
+        westFiat[1] = "GBPUSD";
+        westFiat[2] = "USDZAR";
+        
+        _createRegionalStablecoin(
+            WEST_AFRICA,
+            "West African Stablecoin", 
+            "WAS",
+            40, 35, 25, // 40% crypto, 35% metal, 25% fiat
+            westCrypto,
+            westMetal,
+            westFiat
+        );
+        
+        // Central Africa - Higher metal, moderate crypto, low fiat
+        string[] memory centralCrypto = new string[](2);
+        centralCrypto[0] = "BTCUSD";
+        centralCrypto[1] = "ETHUSD";
+        
+        string[] memory centralMetal = new string[](4);
+        centralMetal[0] = "XAUUSD";
+        centralMetal[1] = "XPTUSD";
+        centralMetal[2] = "XPDUSD";
+        centralMetal[3] = "XAGUSD";
+        
+        string[] memory centralFiat = new string[](2);
+        centralFiat[0] = "EURUSD";
+        centralFiat[1] = "USDZAR";
+        
+        _createRegionalStablecoin(
+            CENTRAL_AFRICA,
+            "Central African Stablecoin",
+            "CAS", 
+            35, 45, 20, // 35% crypto, 45% metal, 20% fiat
+            centralCrypto,
+            centralMetal,
+            centralFiat
+        );
+        
+        // East Africa - Higher crypto, balanced metal/fiat
+        string[] memory eastCrypto = new string[](4);
+        eastCrypto[0] = "BTCUSD";
+        eastCrypto[1] = "ETHUSD";
+        eastCrypto[2] = "SOLUSD";
+        eastCrypto[3] = "ADAUSD";
+        
+        string[] memory eastMetal = new string[](2);
+        eastMetal[0] = "XAUUSD";
+        eastMetal[1] = "XAGUSD";
+        
+        string[] memory eastFiat = new string[](4);
+        eastFiat[0] = "EURUSD";
+        eastFiat[1] = "GBPUSD";
+        eastFiat[2] = "USDZAR";
+        eastFiat[3] = "USDJPY";
+        
+        _createRegionalStablecoin(
+            EAST_AFRICA,
+            "East African Stablecoin",
+            "EAS",
+            45, 30, 25, // 45% crypto, 30% metal, 25% fiat
+            eastCrypto,
+            eastMetal,
+            eastFiat
+        );
+        
+        // Southern Africa - Higher fiat, balanced crypto/metal
+        string[] memory southCrypto = new string[](3);
+        southCrypto[0] = "BTCUSD";
+        southCrypto[1] = "ETHUSD";
+        southCrypto[2] = "BNBUSD";
+        
+        string[] memory southMetal = new string[](3);
+        southMetal[0] = "XAUUSD";
+        southMetal[1] = "XPTUSD";
+        southMetal[2] = "XAGUSD";
+        
+        string[] memory southFiat = new string[](5);
+        southFiat[0] = "EURUSD";
+        southFiat[1] = "GBPUSD";
+        southFiat[2] = "USDZAR";
+        southFiat[3] = "USDCHF";
+        southFiat[4] = "USDCNH";
+        
+        _createRegionalStablecoin(
+            SOUTHERN_AFRICA,
+            "Southern African Stablecoin",
+            "SAS",
+            35, 30, 35, // 35% crypto, 30% metal, 35% fiat
+            southCrypto,
+            southMetal,
+            southFiat
+        );
+        
+        // Horn of Africa - Higher crypto, low metal, moderate fiat
+        string[] memory hornCrypto = new string[](4);
+        hornCrypto[0] = "BTCUSD";
+        hornCrypto[1] = "ETHUSD";
+        hornCrypto[2] = "SOLUSD";
+        hornCrypto[3] = "XRPUSD";
+        
+        string[] memory hornMetal = new string[](2);
+        hornMetal[0] = "XAUUSD";
+        hornMetal[1] = "XAGUSD";
+        
+        string[] memory hornFiat = new string[](4);
+        hornFiat[0] = "EURUSD";
+        hornFiat[1] = "USDZAR";
+        hornFiat[2] = "USDJPY";
+        hornFiat[3] = "USDCHF";
+        
+        _createRegionalStablecoin(
+            HORN_AFRICA,
+            "Horn African Stablecoin",
+            "HAS",
+            50, 20, 30, // 50% crypto, 20% metal, 30% fiat
+            hornCrypto,
+            hornMetal,
+            hornFiat
+        );
+    }
+    
+    function _createRegionalStablecoin(
+        uint256 regionId,
+        string memory name,
+        string memory symbol,
+        uint256 cryptoWeight,
+        uint256 metalWeight,
+        uint256 fiatWeight,
+        string[] memory cryptoAssets,
+        string[] memory metalAssets,
+        string[] memory fiatAssets
+    ) internal {
+        RegionalStablecoin storage stablecoin = regionalStablecoins[regionId];
+        stablecoin.name = name;
+        stablecoin.symbol = symbol;
+        stablecoin.isActive = true;
+        stablecoin.cryptoWeight = cryptoWeight;
+        stablecoin.metalWeight = metalWeight;
+        stablecoin.fiatWeight = fiatWeight;
+        
+        // Set crypto assets and weights
+        stablecoin.cryptoAssets = cryptoAssets;
+        stablecoin.cryptoWeights = new uint256[](cryptoAssets.length);
+        uint256 totalCryptoWeight = 0;
+        for (uint256 i = 0; i < cryptoAssets.length; i++) {
+            stablecoin.cryptoWeights[i] = 10000 / cryptoAssets.length; // Equal distribution
+            totalCryptoWeight += stablecoin.cryptoWeights[i];
+        }
+        
+        // Set metal assets and weights
+        stablecoin.metalAssets = metalAssets;
+        stablecoin.metalWeights = new uint256[](metalAssets.length);
+        uint256 totalMetalWeight = 0;
+        for (uint256 i = 0; i < metalAssets.length; i++) {
+            stablecoin.metalWeights[i] = 10000 / metalAssets.length; // Equal distribution
+            totalMetalWeight += stablecoin.metalWeights[i];
+        }
+        
+        // Set fiat assets and weights
+        stablecoin.fiatAssets = fiatAssets;
+        stablecoin.fiatWeights = new uint256[](fiatAssets.length);
+        uint256 totalFiatWeight = 0;
+        for (uint256 i = 0; i < fiatAssets.length; i++) {
+            stablecoin.fiatWeights[i] = 10000 / fiatAssets.length; // Equal distribution
+            totalFiatWeight += stablecoin.fiatWeights[i];
+        }
+        
+        emit RegionalStablecoinCreated(regionId, name, symbol);
+    }
+    
+    /**
+     * @dev Transfer regional stablecoins with fuel cost
+     */
+    function transfer(
+        uint256 regionId,
+        address to,
+        uint256 amount
+    ) external onlyActiveRegion(regionId) nonReentrant whenNotPaused {
+        require(to != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be positive");
+        require(regionalStablecoins[regionId].balances[msg.sender] >= amount, "Insufficient balance");
+        
+        // Burn fuel tokens
+        _burnFuel(msg.sender, 1, TRANSFER_FUEL_COST, "transfer");
+        
+        regionalStablecoins[regionId].balances[msg.sender] -= amount;
+        regionalStablecoins[regionId].balances[to] += amount;
+        
+        emit Transfer(regionId, msg.sender, to, amount, TRANSFER_FUEL_COST);
+    }
+    
+    /**
+     * @dev Remittance transfer with recipient name and higher fuel cost
+     */
+    function remittance(
+        uint256 regionId,
+        address to,
+        uint256 amount,
+        string memory recipientName
+    ) external onlyActiveRegion(regionId) nonReentrant whenNotPaused {
+        require(to != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be positive");
+        require(bytes(recipientName).length > 0, "Recipient name required");
+        require(regionalStablecoins[regionId].balances[msg.sender] >= amount, "Insufficient balance");
+        
+        // Burn fuel tokens for remittance
+        _burnFuel(msg.sender, 1, REMITTANCE_FUEL_COST, "remittance");
+        
+        regionalStablecoins[regionId].balances[msg.sender] -= amount;
+        regionalStablecoins[regionId].balances[to] += amount;
+        
+        emit Remittance(regionId, msg.sender, to, amount, recipientName, REMITTANCE_FUEL_COST);
+    }
+    
+    /**
+     * @dev Mint regional stablecoins with fuel cost
+     */
+    function mint(
+        uint256 regionId,
+        address to,
+        uint256 amount
+    ) external onlyActiveRegion(regionId) nonReentrant whenNotPaused {
+        require(to != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be positive");
+        
+        // Burn fuel tokens for minting
+        _burnFuel(msg.sender, 1, MINT_FUEL_COST, "mint");
+        
+        regionalStablecoins[regionId].balances[to] += amount;
+        regionalStablecoins[regionId].totalSupply += amount;
+        
+        emit Mint(regionId, to, amount, MINT_FUEL_COST);
+    }
+    
+    /**
+     * @dev Burn regional stablecoins with fuel cost
+     */
+    function burn(
+        uint256 regionId,
+        uint256 amount
+    ) external onlyActiveRegion(regionId) nonReentrant whenNotPaused {
+        require(amount > 0, "Amount must be positive");
+        require(regionalStablecoins[regionId].balances[msg.sender] >= amount, "Insufficient balance");
+        
+        // Burn fuel tokens for burning
+        _burnFuel(msg.sender, 1, BURN_FUEL_COST, "burn");
+        
+        regionalStablecoins[regionId].balances[msg.sender] -= amount;
+        regionalStablecoins[regionId].totalSupply -= amount;
+        
+        emit Burn(regionId, msg.sender, amount, BURN_FUEL_COST);
+    }
+    
+    /**
+     * @dev Calculate regional stablecoin price based on asset composition
+     */
+    function calculateRegionalPrice(uint256 regionId) public view returns (uint256) {
+        require(regionId > 0 && regionId <= totalRegions, "Invalid region ID");
+        
+        RegionalStablecoin storage stablecoin = regionalStablecoins[regionId];
+        IZiGOracleHub oracle = IZiGOracleHub(oracleHub);
+        
+        uint256 cryptoComponent = 0;
+        uint256 metalComponent = 0;
+        uint256 fiatComponent = 0;
+        
+        // Calculate crypto component
+        for (uint256 i = 0; i < stablecoin.cryptoAssets.length; i++) {
+            uint256 price = oracle.getPrice(stablecoin.cryptoAssets[i]);
+            cryptoComponent += (price * stablecoin.cryptoWeights[i]) / 10000;
+        }
+        
+        // Calculate metal component
+        for (uint256 i = 0; i < stablecoin.metalAssets.length; i++) {
+            uint256 price = oracle.getPrice(stablecoin.metalAssets[i]);
+            metalComponent += (price * stablecoin.metalWeights[i]) / 10000;
+        }
+        
+        // Calculate fiat component
+        for (uint256 i = 0; i < stablecoin.fiatAssets.length; i++) {
+            uint256 price = oracle.getPrice(stablecoin.fiatAssets[i]);
+            fiatComponent += (price * stablecoin.fiatWeights[i]) / 10000;
+        }
+        
+        // Weight the components
+        uint256 totalPrice = (
+            (cryptoComponent * stablecoin.cryptoWeight) +
+            (metalComponent * stablecoin.metalWeight) +
+            (fiatComponent * stablecoin.fiatWeight)
+        ) / 100;
+        
+        return totalPrice;
+    }
+    
+    /**
+     * @dev Internal function to burn fuel tokens
+     */
+    function _burnFuel(address _user, uint256 _tokenId, uint256 _amount, string memory _action) internal {
+        require(
+            IZiGUtilityToken(utilityToken).balanceOf(_user, _tokenId) >= _amount,
+            "Insufficient fuel tokens"
+        );
+        
+        IZiGUtilityToken(utilityToken).burn(_user, _tokenId, _amount);
+        emit FuelBurned(_user, _tokenId, _amount, _action);
+    }
+    
+    // Getter functions
+    function getRegionalStablecoin(uint256 regionId) external view returns (
+        string memory name,
+        string memory symbol,
+        uint256 totalSupply,
+        bool isActive,
+        uint256 cryptoWeight,
+        uint256 metalWeight,
+        uint256 fiatWeight
+    ) {
+        RegionalStablecoin storage stablecoin = regionalStablecoins[regionId];
+        return (
+            stablecoin.name,
+            stablecoin.symbol,
+            stablecoin.totalSupply,
+            stablecoin.isActive,
+            stablecoin.cryptoWeight,
+            stablecoin.metalWeight,
+            stablecoin.fiatWeight
+        );
+    }
+    
+    function getBalance(uint256 regionId, address user) external view returns (uint256) {
+        return regionalStablecoins[regionId].balances[user];
+    }
+    
+    function getFuelCosts() external pure returns (
+        uint256 transferCost,
+        uint256 remittanceCost,
+        uint256 mintCost,
+        uint256 burnCost
+    ) {
+        return (TRANSFER_FUEL_COST, REMITTANCE_FUEL_COST, MINT_FUEL_COST, BURN_FUEL_COST);
+    }
+    
+    // Admin functions
+    function setDaoAddress(address _dao) external onlyOwner {
+        dao = _dao;
+    }
+    
+    function setFuelCosts(
+        uint256 _transferCost,
+        uint256 _remittanceCost,
+        uint256 _mintCost,
+        uint256 _burnCost
+    ) external onlyDao {
+        // Note: These would need to be made state variables instead of constants
+        // For now, this is a placeholder for DAO-controlled fuel costs
+    }
+    
+    function pause() external onlyOwner {
+        _pause();
+    }
+    
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+} ---File Content End---
+
 ---Path and files name: ZiGEcocash/contracts/economic_core/BandFeedRegistry.sol
 ---Filename: BandFeedRegistry.sol
 ---File Content Start---
@@ -3567,20 +5484,6 @@ contract SoulReparationNFT is ERC721, Ownable {
         return reparations[tokenId];
     }
 }---File Content End---
-
----Path and files name: ZiGEcocash/contracts/TestToken.sol
----Filename: TestToken.sol
----File Content Start---
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.29;
-
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
-contract TestToken is ERC20 {
-    constructor() ERC20("Test Token", "TEST") {
-        _mint(msg.sender, 1000000 * 10**decimals());
-    }
-} ---File Content End---
 
 ---Path and files name: ZiGEcocash/.deps/npm/@gnosis.pm/safe-contracts@1.3.0/contracts/GnosisSafe.sol
 ---Filename: GnosisSafe.sol

@@ -23,12 +23,20 @@ async function deployToNetwork(networkName) {
     process.env.HARDHAT_NETWORK = networkName;
     
     // Get the deployer account for this network
-    const [deployer] = await ethers.getSigners();
+    const deployer = new ethers.Wallet(process.env.PRIVATE_KEY);
     console.log("Deployer account:", deployer.address);
     
     // Check balance
     const balance = await ethers.provider.getBalance(deployer.address);
     console.log("Deployer balance:", ethers.formatEther(balance), "ETH");
+    
+    // Log current gas price
+    try {
+      const gasPrice = await ethers.provider.getGasPrice();
+      console.log("Current gas price:", ethers.formatUnits(gasPrice, "gwei"), "gwei");
+    } catch (err) {
+      console.log("Could not fetch gas price:", err.message);
+    }
     
     if (balance < ethers.parseEther("0.01")) {
       console.log("⚠️  Warning: Low balance. Deployment may fail.");

@@ -1,140 +1,175 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
+require("hardhat-gas-reporter");
+require("solidity-coverage");
+require("@nomicfoundation/hardhat-verify");
 require("@openzeppelin/hardhat-upgrades");
+require("dotenv").config();
 
-const requiredEnvVars = ["PRIVATE_KEY", "ETHERSCAN_API_KEY"];
-for (const envVar of requiredEnvVars) {
-  if (!process.env[envVar]) {
-    throw new Error(`Missing ${envVar} in .env`);
-  }
-}
-
+/** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
     version: "0.8.29",
     settings: {
       optimizer: {
         enabled: true,
-        runs: 1000,
-        details: {
-          yul: true,
-          constantOptimizer: true,
-          deduplicate: true,
-          cse: true,
-        },
+        runs: 200,
       },
       viaIR: true,
     },
   },
-  gasReporter: {
-    enabled: true,
-    currency: 'USD',
-    token: 'ETH',
-    gasPrice: 20,
-    outputFile: 'gas-report.txt',
-    noColors: false,
-  },
-  sourcify: { enabled: true },
   networks: {
-    // 🚀 Zero Gas / Gasless
-    skale: {
-      url: process.env.SKALE_RPC_URL || "https://mainnet.skalenodes.com/v1/your-endpoint",
-      accounts: [process.env.PRIVATE_KEY],
-      chainId: parseInt(process.env.SKALE_CHAIN_ID || "2046399126"),
-      gas: "auto",
-      gasPrice: "auto",
-      gasMultiplier: 2.5,
-      timeout: 1360000,
+    hardhat: {
+      chainId: 1337,
+      allowUnlimitedContractSize: true,
+      gas: 12000000,
+      blockGasLimit: 12000000,
     },
-    zero: {
-      url: process.env.ZERO_RPC_URL || "https://rpc.zeronetwork.io",
-      accounts: [process.env.PRIVATE_KEY],
-      chainId: parseInt(process.env.ZERO_CHAIN_ID || "7560"),
-    },
-    sophon: {
-      url: process.env.SOPHON_RPC_URL || "https://rpc.sophon.xyz",
-      accounts: [process.env.PRIVATE_KEY],
-      chainId: parseInt(process.env.SOPHON_CHAIN_ID || "8088"),
-    },
-    vite: {
-      url: process.env.VITE_RPC_URL || "https://evm.vite.net", // Example
-      accounts: [process.env.PRIVATE_KEY],
-      chainId: parseInt(process.env.VITE_CHAIN_ID || "8725"),
-    },
-    oasis: {
-      url: process.env.OASIS_RPC_URL || "https://emerald.oasis.dev",
-      accounts: [process.env.PRIVATE_KEY],
-      chainId: parseInt(process.env.OASIS_CHAIN_ID || "42262"),
-    },
-
-    // ✅ Low Gas or Sponsored Models
-    base: {
-      url: process.env.BASE_RPC_URL || "https://mainnet.base.org",
-      accounts: [process.env.PRIVATE_KEY],
-      chainId: 8453,
-    },
-    celo: {
-      url: process.env.CELO_RPC_URL || "https://forno.celo.org",
-      accounts: [process.env.PRIVATE_KEY],
-      chainId: 42220,
-    },
-
-    // 🔒 Secure zk-Rollup hub
-    polygon_zkevm: {
-      url: process.env.POLYGON_ZKEVM_RPC_URL || "https://zkevm-rpc.com",
-      accounts: [process.env.PRIVATE_KEY],
-      chainId: 1101,
-      gasPrice: 0,
-    },
-
-    // 🧬 DAG / Emerging
-    iota_evm: {
-      url: process.env.IOTA_EVM_RPC_URL || "https://json-rpc.evm.iotaledger.net",
-      accounts: [process.env.PRIVATE_KEY],
-      chainId: 8822,
-    },
-    iota_evm_testnet: {
-      url: process.env.IOTA_EVM_TESTNET_RPC_URL || "https://json-rpc.evm.testnet.iotaledger.net",
-      accounts: [process.env.PRIVATE_KEY],
-      chainId: 1075,
-    },
-
-    // 👨‍💻 Dev/Test
     localhost: {
       url: "http://127.0.0.1:8545",
       chainId: 31337,
     },
-    // sepolia: {
-    //   url: process.env.SEPOLIA_RPC_URL,
-    //   accounts: [process.env.PRIVATE_KEY],
-    //   chainId: 11155111,
-    // },
+    sepolia: {
+      url: process.env.SEPOLIA_URL || "https://sepolia.infura.io/v3/823602bd19924aecad1d11e6ed6550af",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 11155111,
+    },
+    polygon_mumbai: {
+      url: process.env.MUMBAI_URL || "https://polygon-mumbai.infura.io/v3/823602bd19924aecad1d11e6ed6550af",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 80001,
+    },
+    bsc_testnet: {
+      url: process.env.BSC_TESTNET_URL || "https://data-seed-prebsc-1-s1.binance.org:8545",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 97,
+    },
+    mainnet: {
+      url: process.env.MAINNET_URL || "https://mainnet.infura.io/v3/823602bd19924aecad1d11e6ed6550af",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 1,
+    },
+    polygon: {
+      url: process.env.POLYGON_URL || "https://polygon-rpc.com",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 137,
+    },
+    bsc: {
+      url: process.env.BSC_URL || "https://bsc-dataseed.binance.org",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 56,
+    },
+    skale: {
+      url: "https://mainnet.skalenodes.com/v1/elated-tan-skat",
+      chainId: 2046399126,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    iota: {
+      url: "https://rpc.ankr.com/iota_evm",
+      chainId: 8822,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    polygonZkEVM: {
+      url: "https://zkevm-rpc.com",
+      chainId: 1101,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    base: {
+      url: "https://mainnet.base.org",
+      chainId: 8453,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    arbitrum: {
+      url: "https://arb1.arbitrum.io/rpc",
+      chainId: 42161,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    optimism: {
+      url: "https://mainnet.optimism.io",
+      chainId: 10,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    mantle: {
+      url: "https://rpc.mantle.xyz",
+      chainId: 5000,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    scroll: {
+      url: "https://rpc.scroll.io",
+      chainId: 534352,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    linea: {
+      url: "https://rpc.linea.build",
+      chainId: 59144,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    skaleTestnet: {
+      url: "https://testnet.skalenodes.com/v1/juicy-low-small-testnet",
+      chainId: 1444673419,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    polygonZkEVMTestnet: {
+      url: "https://rpc.public.zkevm-test.net",
+      chainId: 1442,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    baseTestnet: {
+      url: "https://goerli.base.org",
+      chainId: 84531,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    arbitrumTestnet: {
+      url: "https://goerli-rollup.arbitrum.io/rpc",
+      chainId: 421613,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    optimismTestnet: {
+      url: "https://goerli.optimism.io",
+      chainId: 420,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    polygonTestnet: {
+      url: "https://rpc-mumbai.maticvigil.com",
+      chainId: 80001,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
+    BNB_live: {
+      url: process.env.BSC_URL || "https://bsc-dataseed.binance.org",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 56,
+    },
+    BNB_testnet: {
+      url: process.env.BSC_TESTNET_URL || "https://data-seed-prebsc-1-s1.binance.org:8545",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 97,
+    },
+  },
+  gasReporter: {
+    enabled: process.env.REPORT_GAS !== undefined,
+    currency: "USD",
+    coinmarketcap: process.env.COINMARKETCAP_API_KEY,
   },
   etherscan: {
     apiKey: {
       mainnet: process.env.ETHERSCAN_API_KEY,
-      polygon: process.env.POLYGONSCAN_API_KEY,
-      polygon_zkevm: process.env.POLYGON_ZKEVM_API_KEY,
-      base: process.env.BASE_API_KEY || "dummy",
-      celo: process.env.CELO_API_KEY || "dummy",
-      skale: "dummy",
-      zero: "dummy",
-      sophon: "dummy",
-      vite: "dummy",
-      oasis: "dummy",
       sepolia: process.env.ETHERSCAN_API_KEY,
+      polygon: process.env.POLYGONSCAN_API_KEY,
+      polygonMumbai: process.env.POLYGONSCAN_API_KEY,
+      bsc: process.env.BSCSCAN_API_KEY,
+      bscTestnet: process.env.BSCSCAN_API_KEY,
+      polygonZkEVM: process.env.POLYGONSCAN_API_KEY,
+      base: process.env.BASESCAN_API_KEY,
+      arbitrum: process.env.ARBISCAN_API_KEY,
+      optimism: process.env.OPTIMISM_API_KEY,
+      mantle: process.env.MANTLE_API_KEY,
+      scroll: process.env.SCROLL_API_KEY,
+      linea: process.env.LINEASCAN_API_KEY,
+      BNB_live: process.env.BSCSCAN_API_KEY,
+      BNB_testnet: process.env.BSCSCAN_API_KEY,
     },
     customChains: [
       {
-        network: "skale",
-        chainId: 2046399126,
-        urls: {
-          apiURL: "https://internal-hubs.explorer.mainnet.skalenodes.com:10021/api",
-          browserURL: "https://internal-hubs.explorer.mainnet.skalenodes.com",
-        },
-      },
-      {
-        network: "polygon_zkevm",
+        network: "polygonZkEVM",
         chainId: 1101,
         urls: {
           apiURL: "https://api-zkevm.polygonscan.com/api",
@@ -150,56 +185,64 @@ module.exports = {
         },
       },
       {
-        network: "celo",
-        chainId: 42220,
+        network: "mantle",
+        chainId: 5000,
         urls: {
-          apiURL: "https://api.celoscan.io/api",
-          browserURL: "https://celoscan.io",
+          apiURL: "https://explorer.mantle.xyz/api",
+          browserURL: "https://explorer.mantle.xyz",
         },
       },
       {
-        network: "zero",
-        chainId: 7560,
+        network: "scroll",
+        chainId: 534352,
         urls: {
-          apiURL: "https://explorer.zeronetwork.io/api",
-          browserURL: "https://explorer.zeronetwork.io",
+          apiURL: "https://api.scrollscan.com/api",
+          browserURL: "https://scrollscan.com",
         },
       },
       {
-        network: "sophon",
-        chainId: 8088,
+        network: "linea",
+        chainId: 59144,
         urls: {
-          apiURL: "https://sophon-explorer.com/api",
-          browserURL: "https://sophon-explorer.com",
+          apiURL: "https://api.lineascan.build/api",
+          browserURL: "https://lineascan.build",
         },
       },
       {
-        network: "vite",
-        chainId: 8725,
+        network: "BNB_live",
+        chainId: 56,
         urls: {
-          apiURL: "https://vite-explorer.io/api",
-          browserURL: "https://vite-explorer.io",
+          apiURL: "https://api.bscscan.com/api",
+          browserURL: "https://bscscan.com",
         },
       },
       {
-        network: "oasis",
-        chainId: 42262,
+        network: "BNB_testnet",
+        chainId: 97,
         urls: {
-          apiURL: "https://explorer.emerald.oasis.dev/api",
-          browserURL: "https://explorer.emerald.oasis.dev",
+          apiURL: "https://api-testnet.bscscan.com/api",
+          browserURL: "https://testnet.bscscan.com",
         },
       },
     ],
   },
   paths: {
     sources: "./contracts",
-    artifacts: "./artifacts",
-    cache: "./cache",
     tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts",
   },
-  contractSizer: {
-    alphaSort: true,
-    runOnCompile: true,
-    disambiguatePaths: false,
+  mocha: {
+    timeout: 40000,
   },
-};
+  remappings: [
+    "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
+    "@chainlink/contracts/=node_modules/@chainlink/contracts/",
+    "@uniswap/v3-core/=node_modules/@uniswap/v3-core/",
+    "@uniswap/v3-periphery/=node_modules/@uniswap/v3-periphery/",
+  ],
+  excludeContracts: [
+    "**/node_modules/**",
+    "**/@eth-optimism/**",
+  ],
+}; 
