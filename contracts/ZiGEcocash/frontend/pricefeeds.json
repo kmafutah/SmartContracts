@@ -1,0 +1,30 @@
+[
+  {
+    "symbol": "ZiG",
+    "price": "1.00",
+    "currency": "USD",
+    "source": "OracleHub",
+    "timestamp": 1718000000
+  },
+  {
+    "symbol": "ZiGT",
+    "price": "0.99",
+    "currency": "USD",
+    "source": "OracleHub",
+    "timestamp": 1718000000
+  },
+  {
+    "symbol": "BTC",
+    "price": "67000.00",
+    "currency": "USD",
+    "source": "Chainlink",
+    "timestamp": 1718000000
+  },
+  {
+    "symbol": "ETH",
+    "price": "3500.00",
+    "currency": "USD",
+    "source": "Chainlink",
+    "timestamp": 1718000000
+  }
+] 
