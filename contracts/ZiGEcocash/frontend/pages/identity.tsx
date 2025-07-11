@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { CONTRACTS } from '../lib/contracts';
 import { useNotification } from '../components/Notification';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { useWallet } from '../hooks/useWallet';
 
 // Network configuration for Polygon zkEVM
 const NETWORK_CONFIG = {
@@ -19,10 +20,7 @@ const NETWORK_CONFIG = {
 
 export default function Identity() {
   const notify = useNotification();
-  const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState('');
-  const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null);
-  const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null);
+  const { isConnected, account, provider, signer, contracts, connectWallet } = useWallet();
   const [identityData, setIdentityData] = useState({
     soulboundBalance: '0',
     isVerified: false,
@@ -61,61 +59,35 @@ export default function Identity() {
     }
   };
 
-  // Connect wallet function
-  const connectWallet = async () => {
-    try {
-      if (!(window as any).ethereum) {
-        notify('MetaMask not installed', 'error');
-        return;
-      }
-
-      // Switch to correct network first
-      await switchToZkEVM();
-
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const accounts = await provider.send('eth_requestAccounts', []);
-      const signer = await provider.getSigner();
-      
-      setProvider(provider);
-      setSigner(signer);
-      setAddress(accounts[0]);
-      setIsConnected(true);
-      
-      notify('Wallet connected successfully', 'success');
-    } catch (error: any) {
-      notify(`Failed to connect wallet: ${error.message}`, 'error');
-    }
-  };
-
   // Fetch identity data
   useEffect(() => {
     async function fetchIdentityData() {
-      if (!isConnected || !address || !provider) return;
+      if (!isConnected || !account || !provider) return;
       
       setLoading(true);
       try {
         // Fetch soulbound token balance
         const soulboundContract = new ethers.Contract(
-          CONTRACTS.ZiGSoulboundToken.address,
-          CONTRACTS.ZiGSoulboundToken.abi,
+          contracts.ZiGSoulboundToken.address,
+          contracts.ZiGSoulboundToken.abi,
           provider
         );
 
-        const soulboundBalance = await soulboundContract.balanceOf(address);
+        const soulboundBalance = await soulboundContract.balanceOf(account);
         
         // Check if user has soul reparation NFT
         const soulReparationContract = new ethers.Contract(
-          CONTRACTS.SoulReparationNFT.address,
-          CONTRACTS.SoulReparationNFT.abi,
+          contracts.SoulReparationNFT.address,
+          contracts.SoulReparationNFT.abi,
           provider
         );
 
-        const soulReparationBalance = await soulReparationContract.balanceOf(address);
+        const soulReparationBalance = await soulReparationContract.balanceOf(account);
         
         // Check verification status (this would be from AccessVerifier contract)
         const accessVerifierContract = new ethers.Contract(
-          CONTRACTS.AccessVerifier.address,
-          CONTRACTS.AccessVerifier.abi,
+          contracts.AccessVerifier.address,
+          contracts.AccessVerifier.abi,
           provider
         );
 
@@ -133,7 +105,7 @@ export default function Identity() {
         }
 
         setIdentityData({
-          soulboundBalance: ethers.formatUnits(soulboundBalance, CONTRACTS.ZiGSoulboundToken.decimals),
+          soulboundBalance: ethers.formatUnits(soulboundBalance, contracts.ZiGSoulboundToken.decimals),
           isVerified,
           tribe,
           diaspora,
@@ -148,7 +120,7 @@ export default function Identity() {
     }
     
     fetchIdentityData();
-  }, [isConnected, address, provider, notify]);
+  }, [isConnected, account, provider, contracts, notify]);
 
   // Check initial connection
   useEffect(() => {
@@ -159,10 +131,10 @@ export default function Identity() {
           const accounts = await provider.send('eth_accounts', []);
           if (accounts.length > 0) {
             const signer = await provider.getSigner();
-            setProvider(provider);
-            setSigner(signer);
-            setAddress(accounts[0]);
-            setIsConnected(true);
+            // setProvider(provider); // This line is removed as per new_code
+            // setSigner(signer); // This line is removed as per new_code
+            // setAddress(accounts[0]); // This line is removed as per new_code
+            // setIsConnected(true); // This line is removed as per new_code
           }
         } catch (err) {
           console.error('Initial connection check failed:', err);
@@ -187,7 +159,7 @@ export default function Identity() {
                 : 'bg-panAfrican-crimson text-white hover:bg-red-700'
             }`}
           >
-            {isConnected ? `Connected: ${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect Wallet'}
+            {isConnected ? `Connected: ${account?.slice(0, 6)}...${account?.slice(-4)}` : 'Connect Wallet'}
           </button>
         </div>
       </div>

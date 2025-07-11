@@ -71,7 +71,7 @@ const paymentIcons = {
 export default function GameFiMap() {
   useEffect(() => {
     // Fix leaflet icon issue in Next.js
-    // @ts-ignore
+    // @ts-expect-error
     import('leaflet').then(L => {
       delete L.Icon.Default.prototype._getIconUrl;
       L.Icon.Default.mergeOptions({
@@ -82,13 +82,16 @@ export default function GameFiMap() {
     });
   }, []);
 
+  const tileLayerProps: any = {
+    attribution: "&copy; OpenStreetMap contributors",
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  };
+
   return (
     <div style={{ height: '100vh', width: '100vw', maxWidth: '100%' }}>
+      {/* @ts-ignore: Suppress MapContainer prop type error due to dynamic import */}
       <MapContainer center={[-6.5, 23.5]} zoom={4} style={{ height: '100%', width: '100%' }} scrollWheelZoom={true}>
-        <TileLayer
-          attribution="&copy; OpenStreetMap contributors"
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <TileLayer {...tileLayerProps} />
         {locations.map((loc, i) => (
           <Marker key={i} position={[loc.lat, loc.lng]}>
             <Popup>

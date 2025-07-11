@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { ethers } from 'ethers';
 import { useNotification } from '../components/Notification';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { useWallet } from '../hooks/useWallet';
 
 // Network configuration for Polygon zkEVM
 const NETWORK_CONFIG = {
@@ -20,9 +21,7 @@ const NETWORK_CONFIG = {
 export default function Home() {
   const router = useRouter();
   const notify = useNotification();
-  const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
+  const { isConnected, account, connectWallet, isConnecting } = useWallet();
 
   // Switch to correct network
   const switchToZkEVM = async () => {
@@ -53,53 +52,12 @@ export default function Home() {
     }
   };
 
-  // Connect wallet function
-  const connectWallet = async () => {
-    try {
-      setIsConnecting(true);
-      if (!(window as any).ethereum) {
-        notify('MetaMask not installed', 'error');
-        return;
-      }
-
-      // Switch to correct network first
-      await switchToZkEVM();
-
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const accounts = await provider.send('eth_requestAccounts', []);
-      
-      setAddress(accounts[0]);
-      setIsConnected(true);
-      
-      notify('Wallet connected successfully', 'success');
-      router.push('/dashboard');
-    } catch (error: any) {
-      notify(`Failed to connect wallet: ${error.message}`, 'error');
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  // Check initial connection
+  // On successful connection, redirect to dashboard
   useEffect(() => {
-    const checkConnection = async () => {
-      if ((window as any).ethereum) {
-        try {
-          const provider = new ethers.BrowserProvider((window as any).ethereum);
-          const accounts = await provider.send('eth_accounts', []);
-          if (accounts.length > 0) {
-            setAddress(accounts[0]);
-            setIsConnected(true);
-            router.push('/dashboard');
-          }
-        } catch (err) {
-          console.error('Initial connection check failed:', err);
-        }
-      }
-    };
-
-    checkConnection();
-  }, [router]);
+    if (isConnected && account) {
+      router.push('/dashboard');
+    }
+  }, [isConnected, account, router]);
 
   return (
     <div className="min-h-screen bg-panAfrican-black text-white">
@@ -121,7 +79,7 @@ export default function Home() {
             }`}
           >
             {isConnecting ? <LoadingSpinner size="sm" /> : 
-              isConnected ? `Connected: ${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect Wallet'
+              isConnected ? `Connected: ${account?.slice(0, 6)}...${account?.slice(-4)}` : 'Connect Wallet'
             }
           </button>
         </nav>

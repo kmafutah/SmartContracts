@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-// @ts-ignore
-import QRCode from 'qrcode.react';
-import merchantsDataRaw from '../../frontend/merchants.json';
+import QRCode from 'react-qr-code';
+import merchantsDataRaw from '../merchants.json';
 import styles from '../styles/Merchants.module.css';
 
 interface Merchant {
@@ -99,7 +98,7 @@ const Merchants = () => {
             </div>
             {m.wallet && (
               <div className={styles.qr}>
-                <QRCode value={m.wallet} size={96} />
+                <QRCode value={m.wallet || ''} size={128} />
                 <div className={styles.wallet}>{m.wallet}</div>
               </div>
             )}

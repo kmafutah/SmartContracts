@@ -13,6 +13,8 @@ const links = [
   { href: '/regional-stablecoins', label: 'Regional Stablecoins' },
   { href: '/vault', label: 'Vault' },
   { href: '/identity', label: 'Identity' },
+  { href: '/merchants', label: 'Merchants' },
+  { href: '/gamefi-map', label: 'GameFi Map' },
 ];
 
 export default function Menu() {

@@ -257,7 +257,7 @@ const RegionalStablecoinsPage: React.FC = () => {
                 <label className="block text-sm font-medium mb-2">Action Type</label>
                 <select
                   value={action}
-                  onChange={(e) => setAction(e.target.value as any)}
+                  onChange={(e) => setAction(e.target.value as 'transfer' | 'remittance' | 'mint' | 'burn')}
                   className="w-full p-3 rounded-lg bg-white/20 border border-white/30 text-white"
                 >
                   <option value="transfer">Transfer</option>

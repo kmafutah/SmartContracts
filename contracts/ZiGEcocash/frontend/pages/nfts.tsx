@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { CONTRACTS } from '../lib/contracts';
 import { useNotification } from '../components/Notification';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { useWallet } from '../hooks/useWallet';
 
 // Network configuration for Polygon zkEVM
 const NETWORK_CONFIG = {
@@ -19,10 +20,7 @@ const NETWORK_CONFIG = {
 
 export default function NFTs() {
   const notify = useNotification();
-  const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState('');
-  const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null);
-  const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null);
+  const { isConnected, account, provider, signer, contracts, connectWallet } = useWallet();
   const [nftData, setNftData] = useState<{
     soulReparationNFTs: Array<{ tokenId: string; tokenURI: string }>;
     ziGNFTs: Array<{ tokenId: string; tokenURI: string }>;
@@ -62,52 +60,26 @@ export default function NFTs() {
     }
   };
 
-  // Connect wallet function
-  const connectWallet = async () => {
-    try {
-      if (!(window as any).ethereum) {
-        notify('MetaMask not installed', 'error');
-        return;
-      }
-
-      // Switch to correct network first
-      await switchToZkEVM();
-
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const accounts = await provider.send('eth_requestAccounts', []);
-      const signer = await provider.getSigner();
-      
-      setProvider(provider);
-      setSigner(signer);
-      setAddress(accounts[0]);
-      setIsConnected(true);
-      
-      notify('Wallet connected successfully', 'success');
-    } catch (error: any) {
-      notify(`Failed to connect wallet: ${error.message}`, 'error');
-    }
-  };
-
   // Fetch NFT data
   useEffect(() => {
     async function fetchNFTData() {
-      if (!isConnected || !address || !provider) return;
+      if (!isConnected || !account || !provider) return;
       
       setLoading(true);
       try {
         // Fetch SoulReparationNFTs
         const soulReparationContract = new ethers.Contract(
-          CONTRACTS.SoulReparationNFT.address,
-          CONTRACTS.SoulReparationNFT.abi,
+          contracts.SoulReparationNFT.address,
+          contracts.SoulReparationNFT.abi,
           provider
         );
 
-        const soulReparationBalance = await soulReparationContract.balanceOf(address);
+        const soulReparationBalance = await soulReparationContract.balanceOf(account);
         const soulReparationNFTs = [];
         
         for (let i = 0; i < soulReparationBalance; i++) {
           try {
-            const tokenId = await soulReparationContract.tokenOfOwnerByIndex(address, i);
+            const tokenId = await soulReparationContract.tokenOfOwnerByIndex(account, i);
             const tokenURI = await soulReparationContract.tokenURI(tokenId);
             soulReparationNFTs.push({ tokenId: tokenId.toString(), tokenURI });
           } catch (e) {
@@ -117,17 +89,17 @@ export default function NFTs() {
 
         // Fetch ZiGNFTs
         const ziGNFTContract = new ethers.Contract(
-          CONTRACTS.ZiGNFT.address,
-          CONTRACTS.ZiGNFT.abi,
+          contracts.ZiGNFT.address,
+          contracts.ZiGNFT.abi,
           provider
         );
 
-        const ziGNFTBalance = await ziGNFTContract.balanceOf(address);
+        const ziGNFTBalance = await ziGNFTContract.balanceOf(account);
         const ziGNFTs = [];
         
         for (let i = 0; i < ziGNFTBalance; i++) {
           try {
-            const tokenId = await ziGNFTContract.tokenOfOwnerByIndex(address, i);
+            const tokenId = await ziGNFTContract.tokenOfOwnerByIndex(account, i);
             const tokenURI = await ziGNFTContract.tokenURI(tokenId);
             ziGNFTs.push({ tokenId: tokenId.toString(), tokenURI });
           } catch (e) {
@@ -148,7 +120,7 @@ export default function NFTs() {
     }
     
     fetchNFTData();
-  }, [isConnected, address, provider, notify]);
+  }, [isConnected, account, provider, contracts, notify]);
 
   // Check initial connection
   useEffect(() => {
@@ -159,10 +131,11 @@ export default function NFTs() {
           const accounts = await provider.send('eth_accounts', []);
           if (accounts.length > 0) {
             const signer = await provider.getSigner();
-            setProvider(provider);
-            setSigner(signer);
-            setAddress(accounts[0]);
-            setIsConnected(true);
+            // This part of the useWallet hook manages the state, so we don't need to set it here.
+            // setProvider(provider);
+            // setSigner(signer);
+            // setAddress(accounts[0]);
+            // setIsConnected(true);
           }
         } catch (err) {
           console.error('Initial connection check failed:', err);
@@ -191,7 +164,7 @@ export default function NFTs() {
                 : 'bg-panAfrican-crimson text-white hover:bg-red-700'
             }`}
           >
-            {isConnected ? `Connected: ${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect Wallet'}
+            {isConnected ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet'}
           </button>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { CONTRACTS } from '../lib/contracts';
 import { useNotification } from '../components/Notification';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { useWallet } from '../hooks/useWallet';
 
 // Network configuration for Polygon zkEVM
 const NETWORK_CONFIG = {
@@ -25,10 +26,7 @@ const redistributions = [
 
 export default function Vault() {
   const notify = useNotification();
-  const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState('');
-  const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null);
-  const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null);
+  const { isConnected, account, provider, signer, contracts, connectWallet } = useWallet();
   const [vaultData, setVaultData] = useState({
     balance: '0',
     userShare: '0',
@@ -69,55 +67,29 @@ export default function Vault() {
     }
   };
 
-  // Connect wallet function
-  const connectWallet = async () => {
-    try {
-      if (!(window as any).ethereum) {
-        notify('MetaMask not installed', 'error');
-        return;
-      }
-
-      // Switch to correct network first
-      await switchToZkEVM();
-
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const accounts = await provider.send('eth_requestAccounts', []);
-      const signer = await provider.getSigner();
-      
-      setProvider(provider);
-      setSigner(signer);
-      setAddress(accounts[0]);
-      setIsConnected(true);
-      
-      notify('Wallet connected successfully', 'success');
-    } catch (error: any) {
-      notify(`Failed to connect wallet: ${error.message}`, 'error');
-    }
-  };
-
   // Fetch vault data
   useEffect(() => {
     async function fetchVaultData() {
-      if (!isConnected || !address || !provider) return;
+      if (!isConnected || !account || !provider) return;
       
       setLoading(true);
       try {
         const vaultContract = new ethers.Contract(
-          CONTRACTS.Vault.address,
-          CONTRACTS.Vault.abi,
+          contracts.Vault.address,
+          contracts.Vault.abi,
           provider
         );
 
         const [balance, userShare, totalDeposits] = await Promise.all([
           vaultContract.getVaultBalance(),
-          vaultContract.getUserShare(address),
+          vaultContract.getUserShare(account),
           vaultContract.getTotalDeposits()
         ]);
 
         setVaultData({
-          balance: ethers.formatUnits(balance, CONTRACTS.Vault.decimals),
-          userShare: ethers.formatUnits(userShare, CONTRACTS.Vault.decimals),
-          totalDeposits: ethers.formatUnits(totalDeposits, CONTRACTS.Vault.decimals),
+          balance: ethers.formatUnits(balance, contracts.Vault.decimals),
+          userShare: ethers.formatUnits(userShare, contracts.Vault.decimals),
+          totalDeposits: ethers.formatUnits(totalDeposits, contracts.Vault.decimals),
           nextRedistribution: '3 days' // This would be calculated from contract
         });
       } catch (e: any) {
@@ -129,7 +101,7 @@ export default function Vault() {
     }
     
     fetchVaultData();
-  }, [isConnected, address, provider, notify]);
+  }, [isConnected, account, provider, contracts, notify]);
 
   // Check initial connection
   useEffect(() => {
@@ -140,10 +112,10 @@ export default function Vault() {
           const accounts = await provider.send('eth_accounts', []);
           if (accounts.length > 0) {
             const signer = await provider.getSigner();
-            setProvider(provider);
-            setSigner(signer);
-            setAddress(accounts[0]);
-            setIsConnected(true);
+            // setProvider(provider); // This line is removed as per new_code
+            // setSigner(signer); // This line is removed as per new_code
+            // setAddress(accounts[0]); // This line is removed as per new_code
+            // setIsConnected(true); // This line is removed as per new_code
           }
         } catch (err) {
           console.error('Initial connection check failed:', err);
@@ -164,12 +136,12 @@ export default function Vault() {
     setDepositing(true);
     try {
       const vaultContract = new ethers.Contract(
-        CONTRACTS.Vault.address,
-        CONTRACTS.Vault.abi,
+        contracts.Vault.address,
+        contracts.Vault.abi,
         signer
       );
 
-      const amount = ethers.parseUnits(depositAmount, CONTRACTS.Vault.decimals);
+      const amount = ethers.parseUnits(depositAmount, contracts.Vault.decimals);
       const tx = await vaultContract.deposit(amount);
       await tx.wait();
 
@@ -194,8 +166,8 @@ export default function Vault() {
     setClaiming(true);
     try {
       const vaultContract = new ethers.Contract(
-        CONTRACTS.Vault.address,
-        CONTRACTS.Vault.abi,
+        contracts.Vault.address,
+        contracts.Vault.abi,
         signer
       );
 
@@ -226,7 +198,7 @@ export default function Vault() {
                 : 'bg-panAfrican-crimson text-white hover:bg-red-700'
             }`}
           >
-            {isConnected ? `Connected: ${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect Wallet'}
+            {isConnected ? `Connected: ${account?.slice(0, 6)}...${account?.slice(-4)}` : 'Connect Wallet'}
           </button>
         </div>
       </div>

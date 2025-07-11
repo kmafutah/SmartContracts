@@ -2,7 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  
+  output: 'export',
+  ssr: false,
   // Security headers
   async headers() {
     return [

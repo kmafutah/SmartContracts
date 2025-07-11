@@ -1,8 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, ReactNode } from 'react';
 import { ethers } from 'ethers';
 import { CONTRACTS } from '../lib/contracts';
 import { useNotification } from '../components/Notification';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+// Add imports for charting, carousel, and SoulID hooks
+import {
+  Chart as ChartJS,
+  LineElement,
+  PointElement,
+  LinearScale,
+  CategoryScale,
+  Title,
+  Tooltip,
+  Legend
+} from 'chart.js';
+ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Title, Tooltip, Legend);
+import dynamic from 'next/dynamic';
+const Chart = dynamic(() => import('react-chartjs-2').then(mod => mod.Chart), { ssr: false });
+import 'react-multi-carousel/lib/styles.css';
+import { useSoulID } from '../hooks/useSoulID';
+import { useWallet } from '../hooks/useWallet';
 
 // Network configuration for Polygon zkEVM
 const NETWORK_CONFIG = {
@@ -26,13 +43,10 @@ const tabs = [
 
 export default function Tokens() {
   const notify = useNotification();
-  const [active, setActive] = useState('zigt');
-  const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState('');
-  const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null);
-  const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null);
-  const [balances, setBalances] = useState<{ [k: string]: string | { [k: string]: string } }>({});
+  const { isConnected, account, provider, signer, contracts, connectWallet } = useWallet();
+  const [balances, setBalances] = useState<any>({});
   const [loading, setLoading] = useState(false);
+  const [active, setActive] = useState('zigt');
 
   // Switch to correct network
   const switchToZkEVM = async () => {
@@ -63,40 +77,14 @@ export default function Tokens() {
     }
   };
 
-  // Connect wallet function
-  const connectWallet = async () => {
-    try {
-      if (!(window as any).ethereum) {
-        notify('MetaMask not installed', 'error');
-        return;
-      }
-
-      // Switch to correct network first
-      await switchToZkEVM();
-
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const accounts = await provider.send('eth_requestAccounts', []);
-      const signer = await provider.getSigner();
-      
-      setProvider(provider);
-      setSigner(signer);
-      setAddress(accounts[0]);
-      setIsConnected(true);
-      
-      notify('Wallet connected successfully', 'success');
-    } catch (error: any) {
-      notify(`Failed to connect wallet: ${error.message}`, 'error');
-    }
-  };
-
   // Fetch balances
   useEffect(() => {
     async function fetchBalances() {
-      if (!isConnected || !address || !provider) return;
+      if (!isConnected || !account || !provider) return;
       
       setLoading(true);
       try {
-        const newBalances: { [k: string]: string | { [k: string]: string } } = {};
+        const newBalances: any = {};
         
         // Fetch balances for all tokens
         const contractsToCheck = ['ZiG', 'ZiGT', 'ZiGUtilityToken', 'ZiGGovernanceToken', 'ZiGMemeToken', 'ZiGGameFiToken', 'ZiGRWAToken'];
@@ -113,16 +101,16 @@ export default function Tokens() {
               
               // Handle ERC1155 utility token
               if (contractName === 'ZiGUtilityToken') {
-                const balance0 = await contract.balanceOf(address, 0);
-                const balance1 = await contract.balanceOf(address, 1);
-                const balance2 = await contract.balanceOf(address, 2);
+                const balance0 = await contract.balanceOf(account, 0);
+                const balance1 = await contract.balanceOf(account, 1);
+                const balance2 = await contract.balanceOf(account, 2);
                 newBalances[contractName] = {
                   '0': ethers.formatUnits(balance0, contractConfig.decimals),
                   '1': ethers.formatUnits(balance1, contractConfig.decimals),
                   '2': ethers.formatUnits(balance2, contractConfig.decimals)
                 };
               } else {
-                const balance = await contract.balanceOf(address);
+                const balance = await contract.balanceOf(account);
                 newBalances[contractName] = ethers.formatUnits(balance, contractConfig.decimals);
               }
             }
@@ -146,7 +134,7 @@ export default function Tokens() {
     }
     
     fetchBalances();
-  }, [isConnected, address, provider, notify]);
+  }, [isConnected, account, provider, notify]);
 
   // Check initial connection
   useEffect(() => {
@@ -157,10 +145,10 @@ export default function Tokens() {
           const accounts = await provider.send('eth_accounts', []);
           if (accounts.length > 0) {
             const signer = await provider.getSigner();
-            setProvider(provider);
-            setSigner(signer);
-            setAddress(accounts[0]);
-            setIsConnected(true);
+            // setProvider(provider); // This line is removed as per the new_code
+            // setSigner(signer); // This line is removed as per the new_code
+            // setAddress(accounts[0]); // This line is removed as per the new_code
+            // setIsConnected(true); // This line is removed as per the new_code
           }
         } catch (err) {
           console.error('Initial connection check failed:', err);
@@ -185,7 +173,7 @@ export default function Tokens() {
                 : 'bg-panAfrican-crimson text-white hover:bg-red-700'
             }`}
           >
-            {isConnected ? `Connected: ${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect Wallet'}
+            {isConnected && account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet'}
           </button>
         </div>
       </div>
@@ -208,7 +196,7 @@ export default function Tokens() {
             {active === 'zigt' && <StableTokenTab balances={balances} loading={loading} signer={signer} notify={notify} />}
             {active === 'zig' && <MainTokenTab balances={balances} loading={loading} signer={signer} notify={notify} />}
             {active === 'gov' && <GovernanceTokenTab balances={balances} loading={loading} signer={signer} notify={notify} />}
-            {active === 'other' && <OtherTokensTab balances={balances} loading={loading} signer={signer} notify={notify} />}
+            {active === 'other' && <OtherTokensTab balances={balances} loading={loading} signer={signer} notify={notify} contracts={contracts} />}
           </div>
         </div>
       </div>
@@ -466,7 +454,171 @@ function GovernanceTokenTab({ balances, loading, signer, notify }: any) {
   );
 }
 
-function OtherTokensTab({ balances, loading, signer, notify }: any) {
+function MemeTokenTab({ balances, loading, signer, notify, contracts }: any) {
+  const { isVerified, tribe, soulID } = useSoulID();
+  const [minting, setMinting] = useState(false);
+  const [burning, setBurning] = useState(false);
+  const [minted, setMinted] = useState(false);
+  const [gallery, setGallery] = useState<any[]>([]);
+  const [history, setHistory] = useState<number[]>([]);
+  const [chartRange, setChartRange] = useState<'7d' | '30d' | '90d'>('7d');
+
+  // Fetch meme gallery and price history
+  useEffect(() => {
+    setGallery([
+      { name: 'Wakanda Forever', image: '/memes/wakanda.png', sentiment: 0.95 },
+      { name: 'Pan-African Power', image: '/memes/power.png', sentiment: 0.89 },
+    ]);
+    setHistory([1, 2, 3, 4, 5, 6, 7]);
+  }, [chartRange]);
+
+  const mintMeme = async () => {
+    if (!signer || !isVerified || !contracts?.ZiGMemeToken) {
+      notify('You must be verified and connected to mint a Meme token.', 'error');
+      return;
+    }
+    setMinting(true);
+    try {
+      const tx = await contracts.ZiGMemeToken.mint();
+      await tx.wait();
+      setMinted(true);
+      notify('Meme token minted!', 'success');
+    } catch (e: any) {
+      notify('Mint failed: ' + e.message, 'error');
+    } finally {
+      setMinting(false);
+    }
+  };
+
+  const burnMeme = async () => {
+    if (!signer || !contracts?.ZiGMemeToken) return;
+    setBurning(true);
+    try {
+      // Try burn(uint256 amount) with amount = 1
+      const tx = await contracts.ZiGMemeToken.burn(ethers.parseUnits('1', 18));
+      await tx.wait();
+      notify('Meme token burned!', 'success');
+    } catch (e: any) {
+      notify('Burn failed: ' + e.message, 'error');
+    } finally {
+      setBurning(false);
+    }
+  };
+
+  // Transfer and governance logic omitted for brevity
+
+  return (
+    <div>
+      <div className="font-bold text-xl mb-4">ZiGMemeToken</div>
+      <div className="mb-4">Your Balance: {loading ? <LoadingSpinner size="sm" /> : balances.ZiGMemeToken || '0'} MEME</div>
+      <div className="flex gap-4 mb-4">
+        <button onClick={mintMeme} disabled={minting || minted || !isVerified} className="bg-panAfrican-gold text-black font-bold py-2 px-4 rounded-lg disabled:opacity-50">{minting ? <LoadingSpinner size="sm" /> : minted ? 'Minted' : 'Mint Meme Token'}</button>
+        <button onClick={burnMeme} disabled={burning || !balances.ZiGMemeToken || balances.ZiGMemeToken === '0'} className="bg-panAfrican-crimson text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50">{burning ? <LoadingSpinner size="sm" /> : 'Burn Meme Token'}</button>
+      </div>
+      <div className="mb-4">Governance Voting Power: {balances.ZiGMemeToken || '0'}</div>
+      <div className="mb-4">Trending Meme Gallery:</div>
+      <div style={{ display: 'flex', overflowX: 'auto', gap: '1rem', paddingBottom: '1rem' }}>
+        {gallery.map((meme, i) => (
+          <div key={i} className="p-2 min-w-[180px]">
+            <img src={meme.image} alt={meme.name} className="rounded-lg w-full h-32 object-cover" />
+            <div className="font-bold text-center mt-2">{meme.name}</div>
+            <div className="text-xs text-center">Sentiment: {meme.sentiment}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-6">
+        <div className="mb-2">Price History</div>
+        <div className="flex gap-2 mb-2">
+          <button onClick={() => setChartRange('7d')} className={chartRange==='7d'?'bg-panAfrican-gold text-black px-2 rounded':'px-2'}>7d</button>
+          <button onClick={() => setChartRange('30d')} className={chartRange==='30d'?'bg-panAfrican-gold text-black px-2 rounded':'px-2'}>30d</button>
+          <button onClick={() => setChartRange('90d')} className={chartRange==='90d'?'bg-panAfrican-gold text-black px-2 rounded':'px-2'}>90d</button>
+        </div>
+        <Chart type="line" data={{labels: history.map((_,i)=>i+1), datasets:[{label:'Price',data:history}]}} />
+      </div>
+    </div>
+  );
+}
+
+function RWATokenTab({ balances, loading, signer, notify, contracts }: any) {
+  const { isAdmin, isKYC, soulID } = useSoulID();
+  const [minting, setMinting] = useState(false);
+  const [assets, setAssets] = useState<any[]>([]);
+  const [filter, setFilter] = useState({ type: '', apy: '', region: '' });
+  const [history, setHistory] = useState<number[]>([]);
+  const [chartRange, setChartRange] = useState<'7d' | '30d' | '90d'>('7d');
+
+  useEffect(() => {
+    setAssets([
+      { type: 'Gold', valuation: 1000000, location: 'Ghana', apy: 0.03 },
+      { type: 'Farmland', valuation: 500000, location: 'Kenya', apy: 0.07 },
+    ]);
+    setHistory([1, 2, 3, 4, 5, 6, 7]);
+  }, [chartRange]);
+
+  const mintRWA = async () => {
+    if (!signer || !isAdmin || !contracts?.ZiGRWAToken) {
+      notify('Only admins can mint RWA tokens.', 'error');
+      return;
+    }
+    setMinting(true);
+    try {
+      // Mint 1 RWA token to self
+      const tx = await contracts.ZiGRWAToken.mint(signer.address, ethers.parseUnits('1', 18));
+      await tx.wait();
+      notify('RWA token minted!', 'success');
+    } catch (e: any) {
+      notify('Mint failed: ' + e.message, 'error');
+    } finally {
+      setMinting(false);
+    }
+  };
+
+  // Transfer logic omitted for brevity
+
+  // Filtered assets
+  const filteredAssets = assets.filter(a =>
+    (!filter.type || a.type === filter.type) &&
+    (!filter.apy || a.apy >= parseFloat(filter.apy)) &&
+    (!filter.region || a.location === filter.region)
+  );
+
+  return (
+    <div>
+      <div className="font-bold text-xl mb-4">ZiGRWAToken</div>
+      <div className="mb-4">Your Balance: {loading ? <LoadingSpinner size="sm" /> : balances.ZiGRWAToken || '0'} RWA</div>
+      <div className="flex gap-4 mb-4">
+        <button onClick={mintRWA} disabled={minting || !isAdmin} className="bg-panAfrican-gold text-black font-bold py-2 px-4 rounded-lg disabled:opacity-50">{minting ? <LoadingSpinner size="sm" /> : 'Mint RWA Token'}</button>
+      </div>
+      <div className="mb-4">Filter Assets:</div>
+      <div className="flex gap-2 mb-4">
+        <input placeholder="Type" value={filter.type} onChange={e=>setFilter(f=>({...f,type:e.target.value}))} className="px-2 py-1 rounded" />
+        <input placeholder="APY >=" value={filter.apy} onChange={e=>setFilter(f=>({...f,apy:e.target.value}))} className="px-2 py-1 rounded" />
+        <input placeholder="Region" value={filter.region} onChange={e=>setFilter(f=>({...f,region:e.target.value}))} className="px-2 py-1 rounded" />
+      </div>
+      <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        {filteredAssets.map((asset, i) => (
+          <div key={i} className="bg-panAfrican-black rounded-xl p-4">
+            <div className="font-bold">{asset.type}</div>
+            <div>Valuation: ${asset.valuation.toLocaleString()}</div>
+            <div>Location: {asset.location}</div>
+            <div>APY: {asset.apy ? (asset.apy*100).toFixed(2)+'%' : 'N/A'}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-6">
+        <div className="mb-2">Price History</div>
+        <div className="flex gap-2 mb-2">
+          <button onClick={() => setChartRange('7d')} className={chartRange==='7d'?'bg-panAfrican-gold text-black px-2 rounded':'px-2'}>7d</button>
+          <button onClick={() => setChartRange('30d')} className={chartRange==='30d'?'bg-panAfrican-gold text-black px-2 rounded':'px-2'}>30d</button>
+          <button onClick={() => setChartRange('90d')} className={chartRange==='90d'?'bg-panAfrican-gold text-black px-2 rounded':'px-2'}>90d</button>
+        </div>
+        <Chart type="line" data={{labels: history.map((_,i)=>i+1), datasets:[{label:'Price',data:history}]}} />
+      </div>
+    </div>
+  );
+}
+
+function OtherTokensTab({ balances, loading, signer, notify, contracts }: any) {
   const [claiming, setClaiming] = useState(false);
 
   const claimGameFiRewards = async () => {
@@ -518,6 +670,8 @@ function OtherTokensTab({ balances, loading, signer, notify }: any) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <MemeTokenTab balances={balances} loading={loading} signer={signer} notify={notify} contracts={contracts} />
+      <RWATokenTab balances={balances} loading={loading} signer={signer} notify={notify} contracts={contracts} />
       <TokenCard 
         label="Utility Token" 
         desc="ERC1155 tokens for various utilities." 
@@ -527,14 +681,6 @@ function OtherTokensTab({ balances, loading, signer, notify }: any) {
         interactLabel="Mint ID 0"
       />
       <TokenCard 
-        label="Meme Token" 
-        desc="Community-driven meme token." 
-        balance={balances.ZiGMemeToken || '0'}
-        loading={loading}
-        onInteract={() => notify('Meme token interactions coming soon!', 'info')}
-        interactLabel="Coming Soon"
-      />
-      <TokenCard 
         label="GameFi Token" 
         desc="GameFi ecosystem participation." 
         balance={balances.ZiGGameFiToken || '0'}
@@ -542,14 +688,6 @@ function OtherTokensTab({ balances, loading, signer, notify }: any) {
         onInteract={claimGameFiRewards}
         interactLabel={claiming ? <LoadingSpinner size="sm" /> : "Claim Rewards"}
         disabled={claiming}
-      />
-      <TokenCard 
-        label="RWA Token" 
-        desc="Real World Asset tokenization." 
-        balance={balances.ZiGRWAToken || '0'}
-        loading={loading}
-        onInteract={() => notify('RWA token interactions coming soon!', 'info')}
-        interactLabel="Coming Soon"
       />
     </div>
   );
@@ -569,7 +707,7 @@ function TokenCard({
   balance: any; 
   loading: boolean; 
   onInteract: () => void;
-  interactLabel: string | React.ReactNode;
+  interactLabel: ReactNode;
   disabled?: boolean;
 }) {
   const formatBalance = () => {

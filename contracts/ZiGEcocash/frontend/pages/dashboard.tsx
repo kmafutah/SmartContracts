@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { CONTRACTS } from '../lib/contracts';
 import { useNotification } from '../components/Notification';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { useWallet } from '../hooks/useWallet';
 
 // Network configuration for Polygon zkEVM
 const NETWORK_CONFIG = {
@@ -20,13 +21,9 @@ const NETWORK_CONFIG = {
 
 export default function Dashboard() {
   const notify = useNotification();
+  const { isConnected, account, provider, signer, contracts, connectWallet } = useWallet();
   const [balances, setBalances] = useState<{ [k: string]: string }>({});
   const [loading, setLoading] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [address, setAddress] = useState('');
-  const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null);
-  const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null);
-  const [contracts, setContracts] = useState<{ [k: string]: ethers.Contract }>({});
   const [vaultBalance, setVaultBalance] = useState('0');
   const [vaultLoading, setVaultLoading] = useState(false);
   const [claimLoading, setClaimLoading] = useState(false);
@@ -71,172 +68,6 @@ export default function Dashboard() {
   };
 
   // Connect wallet function
-  const connectWallet = async () => {
-    try {
-      if (!(window as any).ethereum) {
-        notify('MetaMask not installed', 'error');
-        return;
-      }
-
-      // Switch to correct network first
-      await switchToZkEVM();
-
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const accounts = await provider.send('eth_requestAccounts', []);
-      const signer = await provider.getSigner();
-      
-      setProvider(provider);
-      setSigner(signer);
-      setAddress(accounts[0]);
-      setIsConnected(true);
-      
-      notify('Wallet connected successfully', 'success');
-    } catch (error: any) {
-      notify(`Failed to connect wallet: ${error.message}`, 'error');
-    }
-  };
-
-  // Initialize contracts
-  useEffect(() => {
-    if (!signer) return;
-
-    const initContracts = async () => {
-      const contractInstances: { [k: string]: ethers.Contract } = {};
-      
-      for (const [name, contractConfig] of Object.entries(CONTRACTS)) {
-        if (contractConfig.abi && contractConfig.abi.length > 0) {
-          try {
-            contractInstances[name] = new ethers.Contract(
-              contractConfig.address,
-              contractConfig.abi,
-              signer
-            );
-          } catch (e) {
-            console.error(`Failed to initialize ${name} contract:`, e);
-          }
-        }
-      }
-      
-      setContracts(contractInstances);
-    };
-
-    initContracts();
-  }, [signer]);
-
-  // Fetch balances using provider (read-only)
-  useEffect(() => {
-    async function fetchBalances() {
-      if (!isConnected || !address || !provider) return;
-      
-      setLoading(true);
-      try {
-        const newBalances: { [k: string]: string } = {};
-        const newUtilityBalances: { [id: number]: string } = {};
-        
-        // Fetch balances for main tokens using provider (read-only)
-        const contractsToCheck = ['ZiG', 'ZiGT', 'ZiGUtilityToken', 'ZiGGovernanceToken'];
-        
-        for (const contractName of contractsToCheck) {
-          try {
-            const contractConfig = CONTRACTS[contractName as keyof typeof CONTRACTS];
-            if (contractConfig && contractConfig.abi && contractConfig.abi.length > 0) {
-              if (contractName === 'ZiGUtilityToken') {
-                // ERC1155: fetch all defined IDs
-                const utilityIds = [1, 2, 3, 4];
-                const contract = new ethers.Contract(
-                  contractConfig.address,
-                  contractConfig.abi,
-                  provider
-                );
-                for (const id of utilityIds) {
-                  const balance = await contract.balanceOf(address, id);
-                  newUtilityBalances[id] = ethers.formatUnits(balance, contractConfig.decimals);
-                }
-              } else {
-                const contract = new ethers.Contract(
-                  contractConfig.address,
-                  contractConfig.abi,
-                  provider
-                );
-                const balance = await contract.balanceOf(address);
-                newBalances[contractName] = ethers.formatUnits(balance, contractConfig.decimals);
-              }
-            }
-          } catch (e) {
-            console.error(`Failed to fetch ${contractName} balance:`, e);
-            if (contractName === 'ZiGUtilityToken') {
-              [1,2,3,4].forEach(id => newUtilityBalances[id] = '0');
-            } else {
-              newBalances[contractName] = '0';
-            }
-          }
-        }
-        setBalances(newBalances);
-        setUtilityBalances(newUtilityBalances);
-      } catch (e: any) {
-        notify('Failed to fetch balances', 'error');
-        console.error('Balance fetch error:', e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    
-    fetchBalances();
-  }, [isConnected, address, provider, notify]);
-
-  // Fetch vault balance
-  useEffect(() => {
-    async function fetchVaultBalance() {
-      if (!isConnected || !address || !contracts.Vault) return;
-      
-      setVaultLoading(true);
-      try {
-        const vaultContract = contracts.Vault;
-        const balance = await vaultContract.balanceOf(address);
-        setVaultBalance(ethers.formatUnits(balance, 18));
-      } catch (e) {
-        console.error('Failed to fetch vault balance:', e);
-        setVaultBalance('0');
-      } finally {
-        setVaultLoading(false);
-      }
-    }
-    
-    fetchVaultBalance();
-  }, [isConnected, address, contracts]);
-
-  // Fetch vault data for user
-  useEffect(() => {
-    async function fetchVaultUserData() {
-      if (!isConnected || !address || !contracts.Vault) return;
-      setVaultLoading(true);
-      try {
-        const vaultContract = contracts.Vault;
-        // getTotalCollateralValueForZiG and getTotalCollateralValueForZiGT return uint256
-        const [collateralZiG, collateralZiGT, mintedZiG, mintedZiGT] = await Promise.all([
-          vaultContract.getTotalCollateralValueForZiG(address),
-          vaultContract.getTotalCollateralValueForZiGT(address),
-          vaultContract.userMintedZiG(address),
-          vaultContract.userMintedZiGT(address),
-        ]);
-        setUserCollateralZiG(ethers.formatUnits(collateralZiG, 18));
-        setUserCollateralZiGT(ethers.formatUnits(collateralZiGT, 18));
-        setUserMintedZiG(ethers.formatUnits(mintedZiG, 18));
-        setUserMintedZiGT(ethers.formatUnits(mintedZiGT, 18));
-      } catch (e) {
-        console.error('Failed to fetch vault user data:', e);
-        setUserCollateralZiG('0');
-        setUserCollateralZiGT('0');
-        setUserMintedZiG('0');
-        setUserMintedZiGT('0');
-      } finally {
-        setVaultLoading(false);
-      }
-    }
-    fetchVaultUserData();
-  }, [isConnected, address, contracts]);
-
-  // Claim vault share function
   const claimVaultShare = async () => {
     if (!signer) {
       notify('Please connect your wallet first', 'error');
@@ -302,28 +133,121 @@ export default function Dashboard() {
     }
   };
 
-  // Check initial connection
+  // Fetch balances using provider (read-only)
   useEffect(() => {
-    const checkConnection = async () => {
-      if ((window as any).ethereum) {
-        try {
-          const provider = new ethers.BrowserProvider((window as any).ethereum);
-          const accounts = await provider.send('eth_accounts', []);
-          if (accounts.length > 0) {
-            const signer = await provider.getSigner();
-            setProvider(provider);
-            setSigner(signer);
-            setAddress(accounts[0]);
-            setIsConnected(true);
+    async function fetchBalances() {
+      if (!isConnected || !account || !provider) return;
+      
+      setLoading(true);
+      try {
+        const newBalances: { [k: string]: string } = {};
+        const newUtilityBalances: { [id: number]: string } = {};
+        
+        // Fetch balances for main tokens using provider (read-only)
+        const contractsToCheck = ['ZiG', 'ZiGT', 'ZiGUtilityToken', 'ZiGGovernanceToken'];
+        
+        for (const contractName of contractsToCheck) {
+          try {
+            const contractConfig = CONTRACTS[contractName as keyof typeof CONTRACTS];
+            if (contractConfig && contractConfig.abi && contractConfig.abi.length > 0) {
+              if (contractName === 'ZiGUtilityToken') {
+                // ERC1155: fetch all defined IDs
+                const utilityIds = [1, 2, 3, 4];
+                const contract = new ethers.Contract(
+                  contractConfig.address,
+                  contractConfig.abi,
+                  provider
+                );
+                for (const id of utilityIds) {
+                  const balance = await contract.balanceOf(account, id);
+                  newUtilityBalances[id] = ethers.formatUnits(balance, contractConfig.decimals);
+                }
+              } else {
+                const contract = new ethers.Contract(
+                  contractConfig.address,
+                  contractConfig.abi,
+                  provider
+                );
+                const balance = await contract.balanceOf(account);
+                newBalances[contractName] = ethers.formatUnits(balance, contractConfig.decimals);
+              }
+            }
+          } catch (e) {
+            console.error(`Failed to fetch ${contractName} balance:`, e);
+            if (contractName === 'ZiGUtilityToken') {
+              [1,2,3,4].forEach(id => newUtilityBalances[id] = '0');
+            } else {
+              newBalances[contractName] = '0';
+            }
           }
-        } catch (err) {
-          console.error('Initial connection check failed:', err);
         }
+        setBalances(newBalances);
+        setUtilityBalances(newUtilityBalances);
+      } catch (e: any) {
+        notify('Failed to fetch balances', 'error');
+        console.error('Balance fetch error:', e);
+      } finally {
+        setLoading(false);
       }
-    };
+    }
+    
+    fetchBalances();
+  }, [isConnected, account, provider, notify]);
 
-    checkConnection();
-  }, []);
+  // Fetch vault balance
+  useEffect(() => {
+    async function fetchVaultBalance() {
+      if (!isConnected || !account || !contracts.Vault) return;
+      
+      setVaultLoading(true);
+      try {
+        const vaultContract = contracts.Vault;
+        const balance = await vaultContract.balanceOf(account);
+        setVaultBalance(ethers.formatUnits(balance, 18));
+      } catch (e) {
+        console.error('Failed to fetch vault balance:', e);
+        setVaultBalance('0');
+      } finally {
+        setVaultLoading(false);
+      }
+    }
+    
+    fetchVaultBalance();
+  }, [isConnected, account, contracts]);
+
+  // Fetch vault data for user
+  useEffect(() => {
+    async function fetchVaultUserData() {
+      if (!isConnected || !account || !contracts.Vault) return;
+      setVaultLoading(true);
+      try {
+        const vaultContract = contracts.Vault;
+        // getTotalCollateralValueForZiG and getTotalCollateralValueForZiGT return uint256
+        const [collateralZiG, collateralZiGT, mintedZiG, mintedZiGT] = await Promise.all([
+          vaultContract.getTotalCollateralValueForZiG(account),
+          vaultContract.getTotalCollateralValueForZiGT(account),
+          vaultContract.userMintedZiG(account),
+          vaultContract.userMintedZiGT(account),
+        ]);
+        setUserCollateralZiG(ethers.formatUnits(collateralZiG, 18));
+        setUserCollateralZiGT(ethers.formatUnits(collateralZiGT, 18));
+        setUserMintedZiG(ethers.formatUnits(mintedZiG, 18));
+        setUserMintedZiGT(ethers.formatUnits(mintedZiGT, 18));
+      } catch (e) {
+        console.error('Failed to fetch vault user data:', e);
+        setUserCollateralZiG('0');
+        setUserCollateralZiGT('0');
+        setUserMintedZiG('0');
+        setUserMintedZiGT('0');
+      } finally {
+        setVaultLoading(false);
+      }
+    }
+    fetchVaultUserData();
+  }, [isConnected, account, contracts]);
+
+  // Claim vault share function
+  // Deposit to vault function
 
   // Fetch token prices from OracleHub
   useEffect(() => {
@@ -377,7 +301,7 @@ export default function Dashboard() {
   // Fetch recent activity for the user from Vault events
   useEffect(() => {
     async function fetchRecentActivity() {
-      if (!provider || !address) return;
+      if (!provider || !account) return;
       try {
         const vaultIface = new ethers.Interface(CONTRACTS.Vault.abi);
         const vaultAddress = CONTRACTS.Vault.address;
@@ -409,8 +333,8 @@ export default function Dashboard() {
               if (
                 parsed &&
                 (
-                  (parsed.args.user && parsed.args.user.toLowerCase() === address.toLowerCase()) ||
-                  (parsed.args.from && parsed.args.from.toLowerCase() === address.toLowerCase())
+                  (parsed.args.user && parsed.args.user.toLowerCase() === account.toLowerCase()) ||
+                  (parsed.args.from && parsed.args.from.toLowerCase() === account.toLowerCase())
                 )
               ) {
                 return {
@@ -434,7 +358,7 @@ export default function Dashboard() {
       }
     }
     fetchRecentActivity();
-  }, [provider, address]);
+  }, [provider, account]);
 
   return (
     <div className="min-h-screen bg-panAfrican-black text-white flex flex-col md:flex-row">
@@ -467,7 +391,7 @@ export default function Dashboard() {
                 : 'bg-panAfrican-crimson text-white hover:bg-red-700'
             }`}
           >
-            {isConnected ? `Connected: ${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect Wallet'}
+            {isConnected && account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet'}
           </button>
         </div>
 
@@ -538,19 +462,19 @@ export default function Dashboard() {
             <div className="flex-1 flex flex-col items-center justify-center gap-2">
               <div className="w-32 h-32 rounded-full bg-panAfrican-gold opacity-70 flex items-center justify-center mb-2">
                 <span className="text-black font-bold text-lg">
-                  {vaultLoading ? <LoadingSpinner size="sm" color="black" /> : `${userCollateralZiG} Collateral (ZiG)`}
+                  {vaultLoading ? <LoadingSpinner size="sm" color="black" /> : `${parseFloat(userCollateralZiG).toFixed(2)} (ZiG)`}
                 </span>
               </div>
               <div className="w-32 h-32 rounded-full bg-panAfrican-gold opacity-70 flex items-center justify-center mb-2">
                 <span className="text-black font-bold text-lg">
-                  {vaultLoading ? <LoadingSpinner size="sm" color="black" /> : `${userCollateralZiGT} Collateral (ZiGT)`}
+                  {vaultLoading ? <LoadingSpinner size="sm" color="black" /> : `${parseFloat(userCollateralZiGT).toFixed(2)} (ZiGT)`}
                 </span>
               </div>
               <div className="text-sm text-gray-200">
-                {vaultLoading ? <LoadingSpinner size="sm" /> : `Minted ZiG: ${userMintedZiG}`}
+                {vaultLoading ? <LoadingSpinner size="sm" /> : `Minted ZiG: ${parseFloat(userMintedZiG).toFixed(4)}`}
               </div>
               <div className="text-sm text-gray-200">
-                {vaultLoading ? <LoadingSpinner size="sm" /> : `Minted ZiGT: ${userMintedZiGT}`}
+                {vaultLoading ? <LoadingSpinner size="sm" /> : `Minted ZiGT: ${parseFloat(userMintedZiGT).toFixed(4)}`}
               </div>
             </div>
             <div className="flex gap-2">
@@ -610,10 +534,17 @@ function BalanceCard({ label, value, usd, color }: { label: string; value: any; 
     green: 'bg-panAfrican-green text-white',
     crimson: 'bg-panAfrican-crimson text-white',
   };
+  let displayValue = value;
+  if (typeof value === 'string' && !isNaN(Number(value))) {
+    displayValue = parseFloat(value).toFixed(4);
+  }
+  if (typeof value === 'number') {
+    displayValue = value.toFixed(4);
+  }
   return (
     <div className={`rounded-xl p-4 flex flex-col items-start shadow-lg ${colorMap[color]}`}>
       <div className="font-bold text-lg">{label}</div>
-      <div className="text-2xl font-mono">{value}</div>
+      <div className="text-2xl font-mono">{displayValue}</div>
       <div className="text-xs opacity-80">{usd}</div>
     </div>
   );

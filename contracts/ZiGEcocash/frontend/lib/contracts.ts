@@ -19,6 +19,7 @@ import oracleAggregatorAbi from '../../artifacts/contracts/economic_core/OracleA
 import oracleHealthMonitorAbi from '../../artifacts/contracts/economic_core/OracleHealthMonitor.sol/OracleHealthMonitor.json';
 import reparationsDaoAbi from '../../artifacts/contracts/governance_identity_soulbound_statehood/ReparationsDAO.sol/ReparationsDAO.json';
 import regionalStablecoinsAbi from '../../artifacts/contracts/economic_core/RegionalStablecoins.sol/RegionalStablecoins.json';
+import accessVerifierAbi from '../../artifacts/contracts/governance_identity_soulbound_statehood/AccessVerifier.sol/AccessVerifier.json';
 
 export const CONTRACTS = {
   // Core Economic Contracts
@@ -136,7 +137,7 @@ export const CONTRACTS = {
   },
   AccessVerifier: {
     address: deployment.AccessVerifier,
-    abi: [], // Add ABI when available
+    abi: accessVerifierAbi.abi, // Added ABI import
     symbol: 'AccessVerifier',
     decimals: 0,
   },
