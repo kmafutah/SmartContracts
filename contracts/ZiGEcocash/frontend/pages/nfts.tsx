@@ -64,6 +64,11 @@ export default function NFTs() {
   useEffect(() => {
     async function fetchNFTData() {
       if (!isConnected || !account || !provider) return;
+      if (!contracts.SoulReparationNFT || !contracts.ZiGNFT) {
+        notify('NFT contract not loaded. Please check your network or contract deployment.', 'error');
+        setLoading(false);
+        return;
+      }
       
       setLoading(true);
       try {

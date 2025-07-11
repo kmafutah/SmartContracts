@@ -1,1 +1,20 @@
-{}
+{
+  "pages/gamefi-map.tsx -> leaflet": {
+    "id": "pages/gamefi-map.tsx -> leaflet",
+    "files": [
+      "static/chunks/node_modules_leaflet_dist_leaflet-src_js.js"
+    ]
+  },
+  "pages/gamefi-map.tsx -> react-leaflet": {
+    "id": "pages/gamefi-map.tsx -> react-leaflet",
+    "files": [
+      "static/chunks/node_modules_react-leaflet_lib_index_js.js"
+    ]
+  },
+  "pages/tokens.tsx -> react-chartjs-2": {
+    "id": "pages/tokens.tsx -> react-chartjs-2",
+    "files": [
+      "static/chunks/node_modules_react-chartjs-2_dist_index_js.js"
+    ]
+  }
+}

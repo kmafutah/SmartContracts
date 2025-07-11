@@ -71,6 +71,11 @@ export default function Vault() {
   useEffect(() => {
     async function fetchVaultData() {
       if (!isConnected || !account || !provider) return;
+      if (!contracts.Vault) {
+        notify('Vault contract not loaded. Please check your network or contract deployment.', 'error');
+        setLoading(false);
+        return;
+      }
       
       setLoading(true);
       try {

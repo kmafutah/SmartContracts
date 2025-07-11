@@ -66,10 +66,42 @@ export const useWallet = () => {
       
       for (const [name, contract] of Object.entries(contracts)) {
         try {
-          if (CONTRACTS[name as keyof typeof CONTRACTS]?.decimals !== undefined) {
-            const balance = await contract.balanceOf(state.account);
-            const decimals = CONTRACTS[name as keyof typeof CONTRACTS].decimals;
-            newBalances[name] = ethers.formatUnits(balance, decimals);
+          const contractConfig = CONTRACTS[name as keyof typeof CONTRACTS];
+          if (!contractConfig || !contractConfig.address || contractConfig.address === null || contractConfig.address === undefined) {
+            continue; // Skip if address is missing
+          }
+          if (contractConfig.decimals !== undefined) {
+            // Only call balanceOf for known token contracts
+            // ERC20/ERC721: balanceOf(address), ERC1155: balanceOf(address, id)
+            if (name === 'ZiGUtilityToken') {
+              // ERC1155: fetch balances for IDs 0, 1, 2, 3
+              const ids = [0, 1, 2, 3];
+              const balancesObj: Record<string, string> = {};
+              for (const id of ids) {
+                const balance = await contract.balanceOf(state.account, id);
+                const decimals = contractConfig.decimals;
+                balancesObj[id] = ethers.formatUnits(balance, decimals);
+              }
+              newBalances[name] = balancesObj;
+            } else if (
+              name === 'ZiG' ||
+              name === 'ZiGT' ||
+              name === 'ZiGGovernanceToken' ||
+              name === 'ZiGMemeToken' ||
+              name === 'ZiGRWAToken' ||
+              name === 'ZiGGameFiToken' ||
+              name === 'ZiGNFT' ||
+              name === 'SoulReparationNFT' ||
+              name === 'ZiGSoulboundToken'
+            ) {
+              // ERC20/ERC721: balanceOf(address)
+              const balance = await contract.balanceOf(state.account);
+              const decimals = contractConfig.decimals;
+              newBalances[name] = ethers.formatUnits(balance, decimals);
+            } else {
+              // Skip contracts that do not have balanceOf
+              continue;
+            }
           }
         } catch (err) {
           console.error(`Failed to load balance for ${name}:`, err);

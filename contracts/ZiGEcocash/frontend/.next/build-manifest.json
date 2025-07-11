@@ -22,15 +22,50 @@
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
-    "/dashboard": [
+    "/dao": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/dashboard.js"
+      "static/chunks/pages/dao.js"
     ],
-    "/oracles": [
+    "/dao-oracle": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/oracles.js"
+      "static/chunks/pages/dao-oracle.js"
+    ],
+    "/gamefi-map": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/gamefi-map.js"
+    ],
+    "/identity": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/identity.js"
+    ],
+    "/merchants": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/merchants.js"
+    ],
+    "/nfts": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/nfts.js"
+    ],
+    "/regional-stablecoins": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/regional-stablecoins.js"
+    ],
+    "/tokens": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/tokens.js"
+    ],
+    "/vault": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/vault.js"
     ]
   },
   "ampFirstPages": []
