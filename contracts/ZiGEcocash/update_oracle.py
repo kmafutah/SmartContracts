@@ -34,10 +34,18 @@ CHAIN_ID = 1101  # Polygon zkEVM chainId
 
 if not RPC_URL or not PRIVATE_KEY:
     raise Exception("Missing POLYGON_ZKEVM_RPC_URL or PRIVATE_KEY in .env")
+if not ALPHA_VANTAGE_API_KEY:
+    logging.warning("ALPHA_VANTAGE_API_KEY missing; metals and forex may rely on onchain prices")
 
 ACCOUNT = Account.from_key(PRIVATE_KEY)
 WALLET_ADDRESS = ACCOUNT.address
 web3 = Web3(Web3.HTTPProvider(RPC_URL))
+
+# Check wallet balance
+balance = web3.eth.get_balance(WALLET_ADDRESS)
+logging.info(f"Wallet balance: {web3.from_wei(balance, 'ether')} ETH")
+# if balance < web3.to_wei(0.01, 'ether'):
+#     raise Exception(f"Insufficient funds: Wallet has {web3.from_wei(balance, 'ether')} ETH, need at least 0.01 ETH")
 
 # === Load ABI and Oracle Contract ===
 with open("ZiGOracleHub.json") as f:
@@ -48,8 +56,6 @@ with open("deployment-addresses-polygon_zkevm.json") as f:
 
 # Get both oracle addresses
 new_oracle_address = Web3.to_checksum_address(deployment["ZiGOracleHub"])
-
-# Get the old oracle address that the Vault is using
 vault_address = Web3.to_checksum_address(deployment["Vault"])
 vault_abi = json.load(open("artifacts/contracts/economic_core/Vault.sol/Vault.json"))["abi"]
 vault_contract = web3.eth.contract(address=vault_address, abi=vault_abi)
@@ -88,7 +94,7 @@ ALPHA_VANTAGE_SYMBOLS = {
 }
 
 # === Rate-limit Protection ===
-def rate_limited(min_interval=1.2):
+def rate_limited(min_interval=5.0):  # Increased for Yahoo Finance
     def decorator(fn):
         last_called = [0.0]
         @wraps(fn)
@@ -102,8 +108,31 @@ def rate_limited(min_interval=1.2):
         return wrapper
     return decorator
 
+# === Retry Decorator for API Requests ===
+def retry_api(times=3, delay=5):
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            for attempt in range(times):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    if "429" in str(e):
+                        logging.warning(f"Rate limit hit for {fn.__name__}, attempt {attempt + 1}/{times}")
+                        if attempt < times - 1:
+                            time.sleep(delay * (2 ** attempt))  # Exponential backoff
+                    else:
+                        logging.warning(f"Error in {fn.__name__}: {e}")
+                        if attempt < times - 1:
+                            time.sleep(delay)
+            logging.error(f"Failed after {times} attempts: {fn.__name__}")
+            return None
+        return wrapper
+    return decorator
+
 # === Price Providers ===
-@rate_limited(1.2)
+@rate_limited(5.0)
+@retry_api(times=3, delay=5)
 def fetch_price_yahoo(asset):
     """Fetch price from Yahoo Finance"""
     try:
@@ -117,6 +146,7 @@ def fetch_price_yahoo(asset):
         return None
 
 @rate_limited(1.5)
+@retry_api(times=3, delay=5)
 def fetch_price_coingecko(asset):
     """Fetch crypto price from CoinGecko"""
     if asset not in COINGECKO_IDS:
@@ -135,9 +165,11 @@ def fetch_price_coingecko(asset):
         return None
 
 @rate_limited(2.0)
+@retry_api(times=3, delay=5)
 def fetch_price_alphavantage(asset):
     """Fetch forex/metal price from Alpha Vantage"""
     if not ALPHA_VANTAGE_API_KEY or asset not in ALPHA_VANTAGE_SYMBOLS:
+        logging.warning(f"Alpha Vantage skipped for {asset}: Missing API key or unsupported asset")
         return None
     
     try:
@@ -160,25 +192,22 @@ def fetch_price_alphavantage(asset):
         return None
 
 @rate_limited(1.0)
-def fetch_price_fallback(asset):
-    """Fallback price provider with reasonable defaults"""
-    fallback_prices = {
-        # Crypto
-        "BTCUSD": 45000, "ETHUSD": 2500, "BNBUSD": 300, "XRPUSD": 0.5, "SOLUSD": 100,
-        # Metals
-        "XAUUSD": 2000, "XAGUSD": 25, "XPTUSD": 1000, "XPDUSD": 1200,
-        # Forex
-        "EURUSD": 1.1, "GBPUSD": 1.25, "USDZAR": 18, "USDJPY": 150, "USDCHF": 0.9, "USDCNH": 7.2
-    }
-    
-    if asset in fallback_prices:
-        price = fallback_prices[asset]
-        logging.warning(f"Using fallback price for {asset}: ${price}")
-        return price
-    return None
+def fetch_price_fallback(asset, asset_type, oracle_hub_contract):
+    """Fetch last onchain price as fallback"""
+    try:
+        price = get_current_onchain_price(asset, asset_type, oracle_hub_contract)
+        if price and price > 0:
+            logging.warning(f"Using last onchain price for {asset}: ${price}")
+            return price
+        else:
+            logging.error(f"No valid onchain price for {asset}, skipping update")
+            return None
+    except Exception as e:
+        logging.error(f"Failed to fetch onchain price for {asset}: {e}, skipping update")
+        return None
 
-def fetch_price_with_fallbacks(asset):
-    """Try multiple price providers with fallbacks"""
+def fetch_price_with_fallbacks(asset, asset_type, oracle_hub_contract):
+    """Try multiple price providers with onchain price fallback"""
     providers = []
     
     # Determine which providers to use based on asset type
@@ -186,19 +215,13 @@ def fetch_price_with_fallbacks(asset):
         providers = [
             ("Yahoo Finance", lambda: fetch_price_yahoo(asset)),
             ("CoinGecko", lambda: fetch_price_coingecko(asset)),
-            ("Fallback", lambda: fetch_price_fallback(asset))
+            ("Onchain Fallback", lambda: fetch_price_fallback(asset, asset_type, oracle_hub_contract))
         ]
-    elif asset in METAL_ASSETS:
+    elif asset in METAL_ASSETS or asset in FOREX_ASSETS:
         providers = [
+            ("Alpha Vantage", lambda: fetch_price_alphavantage(asset)),           
             ("Yahoo Finance", lambda: fetch_price_yahoo(asset)),
-            ("Alpha Vantage", lambda: fetch_price_alphavantage(asset)),
-            ("Fallback", lambda: fetch_price_fallback(asset))
-        ]
-    elif asset in FOREX_ASSETS:
-        providers = [
-            ("Yahoo Finance", lambda: fetch_price_yahoo(asset)),
-            ("Alpha Vantage", lambda: fetch_price_alphavantage(asset)),
-            ("Fallback", lambda: fetch_price_fallback(asset))
+            ("Onchain Fallback", lambda: fetch_price_fallback(asset, asset_type, oracle_hub_contract))
         ]
     
     # Try each provider
@@ -212,7 +235,7 @@ def fetch_price_with_fallbacks(asset):
             logging.warning(f"Provider {provider_name} failed for {asset}: {e}")
             continue
     
-    logging.error(f"❌ All price providers failed for {asset}")
+    logging.error(f"❌ All price providers failed for {asset}, skipping update")
     return None
 
 def retry(times=3, delay=3):
@@ -237,7 +260,7 @@ def send_tx(fn):
         'from': WALLET_ADDRESS,
         'nonce': web3.eth.get_transaction_count(WALLET_ADDRESS),
         'gas': 300000,
-        'gasPrice': 0,  # Zero-gas for Polygon zkEVM
+        'gasPrice': 0,  # Zero-gas for Polygon zkEVM (kept as per original)
         'chainId': CHAIN_ID
     })
     signed = web3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
@@ -264,13 +287,17 @@ def update_price(asset, price, asset_type, oracle_hub_contract):
 
 @retry(times=3)
 def get_current_onchain_price(asset, asset_type, oracle_hub_contract):
-    if asset_type == "crypto":
-        data = oracle_hub_contract.functions.cryptoPrices(asset).call()
-    elif asset_type == "metal":
-        data = oracle_hub_contract.functions.metalPrices(asset).call()
-    elif asset_type == "forex":
-        data = oracle_hub_contract.functions.forexPrices(asset).call()
-    return float(Web3.from_wei(data[0], 'ether'))
+    try:
+        if asset_type == "crypto":
+            data = oracle_hub_contract.functions.cryptoPrices(asset).call()
+        elif asset_type == "metal":
+            data = oracle_hub_contract.functions.metalPrices(asset).call()
+        elif asset_type == "forex":
+            data = oracle_hub_contract.functions.forexPrices(asset).call()
+        return float(Web3.from_wei(data[0], 'ether'))
+    except Exception as e:
+        logging.warning(f"Failed to fetch onchain price for {asset}: {e}")
+        return 0
 
 def update_incrementally(asset, live_price, asset_type, oracle_hub_contract):
     current_price = get_current_onchain_price(asset, asset_type, oracle_hub_contract)
@@ -302,7 +329,7 @@ def update_incrementally(asset, live_price, asset_type, oracle_hub_contract):
 
 def main():
     logging.info("🔄 Starting enhanced oracle updates with multiple providers...")
-    logging.info("📊 Providers: Yahoo Finance, CoinGecko, Alpha Vantage, Fallback")
+    logging.info("📊 Providers: Yahoo Finance, CoinGecko, Alpha Vantage, Onchain Fallback")
 
     # Update both oracles
     oracles = [
@@ -314,21 +341,27 @@ def main():
         logging.info(f"\n📊 Updating {oracle_name}...")
         
         for asset in CRYPTO_ASSETS:
-            price = fetch_price_with_fallbacks(asset)
+            price = fetch_price_with_fallbacks(asset, "crypto", oracle_contract)
             if price:
                 update_incrementally(asset, price, "crypto", oracle_contract)
+            else:
+                logging.warning(f"Skipping {asset} update: No valid price available")
 
         for asset in METAL_ASSETS:
-            price = fetch_price_with_fallbacks(asset)
+            price = fetch_price_with_fallbacks(asset, "metal", oracle_contract)
             if price:
                 update_incrementally(asset, price, "metal", oracle_contract)
+            else:
+                logging.warning(f"Skipping {asset} update: No valid price available")
 
         for asset in FOREX_ASSETS:
-            price = fetch_price_with_fallbacks(asset)
+            price = fetch_price_with_fallbacks(asset, "forex", oracle_contract)
             if price:
                 update_incrementally(asset, price, "forex", oracle_contract)
+            else:
+                logging.warning(f"Skipping {asset} update: No valid price available")
 
     logging.info("✅ All oracle updates completed for both oracles with enhanced providers.")
 
 if __name__ == "__main__":
-    main() 
+    main()
