@@ -337,9 +337,9 @@ def main():
 
     # Update both oracles
     oracles = [
+        ("ZiG Verse Hub",v12_oracle_contract),
         ("New Oracle Hub", new_oracle_hub),
-        ("Old Oracle Hub (Vault's)", old_oracle_hub),
-        ("ZiG Verse Hub",v12_oracle_contract)
+        ("Old Oracle Hub (Vault's)", old_oracle_hub)
     ]
 
     for oracle_name, oracle_contract in oracles:
