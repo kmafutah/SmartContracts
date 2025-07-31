@@ -65,6 +65,7 @@ v12_oracle_address = Web3.to_checksum_address("0x930B074E30Fd1ADF78aDB7A892767C3
 # Create contracts for both oracles
 new_oracle_hub = web3.eth.contract(address=new_oracle_address, abi=oracle_abi)
 old_oracle_hub = web3.eth.contract(address=old_oracle_address, abi=oracle_abi)
+v12_oracle_contract = web3.eth.contract(address=v12_oracle_address, abi=oracle_abi)
 
 
 logging.info(f"New Oracle Hub: {new_oracle_address}")
@@ -338,7 +339,7 @@ def main():
     oracles = [
         ("New Oracle Hub", new_oracle_hub),
         ("Old Oracle Hub (Vault's)", old_oracle_hub),
-        ("ZiG Verse Hub",v12_oracle_address)
+        ("ZiG Verse Hub",v12_oracle_contract)
     ]
 
     for oracle_name, oracle_contract in oracles:
