@@ -60,13 +60,16 @@ vault_address = Web3.to_checksum_address(deployment["Vault"])
 vault_abi = json.load(open("artifacts/contracts/economic_core/Vault.sol/Vault.json"))["abi"]
 vault_contract = web3.eth.contract(address=vault_address, abi=vault_abi)
 old_oracle_address = vault_contract.functions.oracleHub().call()
+v12_oracle_address = Web3.to_checksum_address("0x930B074E30Fd1ADF78aDB7A892767C3b9640BeEa")
 
 # Create contracts for both oracles
 new_oracle_hub = web3.eth.contract(address=new_oracle_address, abi=oracle_abi)
 old_oracle_hub = web3.eth.contract(address=old_oracle_address, abi=oracle_abi)
 
+
 logging.info(f"New Oracle Hub: {new_oracle_address}")
 logging.info(f"Old Oracle Hub (Vault's): {old_oracle_address}")
+logging.info(f"Upgraded oracle for ZiGVerse: {v12_oracle_address}")
 
 # === Asset Lists ===
 CRYPTO_ASSETS = ["BTCUSD", "ETHUSD", "BNBUSD", "XRPUSD", "SOLUSD"]
@@ -334,7 +337,8 @@ def main():
     # Update both oracles
     oracles = [
         ("New Oracle Hub", new_oracle_hub),
-        ("Old Oracle Hub (Vault's)", old_oracle_hub)
+        ("Old Oracle Hub (Vault's)", old_oracle_hub),
+        ("ZiG Verse Hub",v12_oracle_address)
     ]
 
     for oracle_name, oracle_contract in oracles:
